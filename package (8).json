@@ -1,0 +1,15 @@
+{
+  "name": "serdiya-address-bot",
+  "version": "7.5.0",
+  "description": "Serdiya Address Bot v7.5 MASTER - auto-save, Hinglish, anti-hallucination (labels+weight), B.O/S.O preserved",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "googleapis": "^140.0.1",
+    "express": "^4.19.2",
+    "mongodb": "^6.8.0"
+  }
+}
