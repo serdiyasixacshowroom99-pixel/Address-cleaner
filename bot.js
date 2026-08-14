@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v7.5 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v7.8 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -58,7 +58,7 @@ function isUnsafeToLearn(text) {
   if (/^COD/i.test(t)) return true;
   if (/\bg$/i.test(t)) return true;                    // weight
   if (/(chain|bali|anguthi|rakhdi|ring|payal|jhumka|kada|locket|set|combo|galachen)/i.test(t)) return true; // product
-  if (/^(from|👤|📦)/i.test(t)) return true;
+  if (/^(from|form|forum|frm|fram|👤|📦)/i.test(t)) return true;
   return false;
 }
 
@@ -487,6 +487,9 @@ const PRODUCT_WORDS_SRC =
 // Devanagari me likhe product (कड़ा, चेन, अंगूठी...) — inhe bhi hatao
 const PRODUCT_DEV_RE = /^(?:\d+\s*)?(?:कड़ा|कडा|कड़े|चेन|चैन|चेइन|अंगूठी|अंगुठी|अँगूठी|बाली|बालि|लॉकेट|लोकेट|माला|हार|पायल|पाजेब|झुमका|झुमकी|झुमर|कंगन|चूड़ी|चुड़ी|ब्रेसलेट|ब्रासलेट|मंगलसूत्र|मंगलसुत्र|रखडी|राखड़ी|राखी|गलचेन|गलाचेन|गोखरू|गोखरु|नथनी|नथ|टागडी|तगड़ी|कमरबंद|बाजूबंद|मांगटीका|कोंबो|कोम्बो|सेट|फुल|फूल|जोड़ी|जोडी|मुरका|कंठी|पेंडल|पेंडेंट)(?:\s|$|[+,\d])/;
 
+// Asli address ke sanket — inme se koi shabd ho to line KABHI product nahi mani jayegi
+const ADDRESS_HINT_RE = /\b(road|rd|marg|nagar|nagri|colony|street|gali|chowk|chauraha|circle|bazar|bazaar|market|mandi|mohalla|pura|puram|wadi|vihar|park|complex|society|apartment|tower|plaza|building|niwas|nivas|bhawan|bhavan|sadan|villa|house|makan|plot|flat|room|shop|ward|sector|block|phase|line|near|opp|opposite|behind|samne|pass|paas|village|vill|gaon|gram|post|po|dist|district|jila|tehsil|tahsil|teh|taluka|taluk|city|state|station|school|college|hospital|clinic|medical|temple|mandir|masjid|church|gurudwara|bank|atm|petrol|pump|hotel|dhaba|restaurant|garden|chakki|store|stor|agency|office|factory|godown|godam|farm|dairy|tanki|talab|nadi|pul|bridge|highway|nh|sh|bypass|main|new|old|purana|naya|auto|mobile|motor|cycle|tyre|hardware|electric|electronics|furniture|marble|granite|cement|steel|iron|glass|paint|tiles|sanitary|kirana|karyana|general|provision|super|mart|super\s*market|sweet|mishthan|bhandar|namkeen|bakery|cafe|tea|chai|juice|dairy|milk|gas|cylinder|salon|parlour|parlor|beauty|cloth|garment|readymade|fashion|footwear|shoe|jewell?er|opticals?|computer|mobil|photo|studio|press|xerox|stationery|book|toy|gift|sports|hard\s*ware|traders?|trading|enterprises?|industries|udyog|company|pvt|ltd|centre|center|point|palace|residency|heights|enclave|estate|corner|junction|crossing|naka|phatak|tiraha|mata|devi|maharaj|baba|swami|guru|shri|shree|sri|sant|dev)\b/i;
+
 const PRODUCT_LINE_RE = new RegExp(
   `^(?:${PRODUCT_WORDS_SRC})\\b(?!\\s+(?:road|marg|nagar|chowk|chauraha|gali|colony|street|bazar|bazaar|market|mohalla|pura|puram|wadi|park|vihar|complex|mandi|gaon|gram|niwas|bhawan|sadan|villa|house|society|apartment))`,
   "i"
@@ -606,7 +609,9 @@ function normalizeRaw(raw) {
   // "COD" label ke baad amount agli line pe ho to jod do
   t = t.replace(/^\s*(cod|c\.?o\.?d\.?|payment|pement|iug)\s*:?\s*$\n\s*([\d,]+(?:\s*[-=]\s*[\d,]+)*)/gim, "COD $2");
   // ₹ symbol, colon, extra "=" hatao
-  t = t.replace(/(cod|c\.?o\.?d\.?|payment|pement|pyment)\s*[.:=-]*\s*₹?\s*/gi, "COD ");
+  // (?![A-Za-z]) zaruri hai — warna "Pin code" ka "cod" bhi COD ban jata tha.
+  // Lekin digit chalega, taaki "COD1500" bhi pakda jaye.
+  t = t.replace(/(?<![A-Za-z])(cod|c\.o\.d\.?|payment|pement|pyment)(?![A-Za-z])\s*[.:=-]*\s*₹?\s*/gi, "COD ");
   // "1500=100=1400" → "1500-100=1400"   |   "1500-100-1400" → "1500-100=1400"
   t = t.replace(/(COD\s+[\d,]+)\s*=\s*([\d,]+)\s*=\s*([\d,]+)/gi, "$1-$2=$3");
   t = t.replace(/(COD\s+[\d,]+)\s*-\s*([\d,]+)\s*-\s*([\d,]+)/gi, "$1-$2=$3");
@@ -722,7 +727,7 @@ function scrubSenderFromCleaned(cleanedText, rawText) {
       if (um) senders.push(um[1].toLowerCase().replace(/_/g, " "));
     }
     // "From X" — lenient: line ke aakhir tak strict match nahi, jo bhi Roman naam mile le lo
-    const fm = l.match(/^(?:from|form)\b\s*[.:\-]?\s*([A-Za-z][A-Za-z\s]{2,40})/i);
+    const fm = l.match(/^(?:from|form|forum|frm|fram|frome|froam|farom)\b\s*[.:\-]?\s*([A-Za-z][A-Za-z\s]{2,40})/i);
     if (fm) {
       const n = fm[1].replace(/\s+/g, " ").trim().toLowerCase();
       if (n.length > 3) senders.push(n);
@@ -732,7 +737,7 @@ function scrubSenderFromCleaned(cleanedText, rawText) {
   // "From" akela line + agli line naam wali — do-line pattern bhi pakdo
   const rawLines = rawText.split("\n").map((l) => l.trim());
   for (let i = 0; i < rawLines.length - 1; i++) {
-    if (/^(from|form)\.?$/i.test(rawLines[i])) {
+    if (/^(from|form|forum|frm|fram)\.?$/i.test(rawLines[i])) {
       const nxt = rawLines[i + 1];
       if (/^[A-Za-z][A-Za-z\s]{2,40}$/.test(nxt)) senders.push(nxt.toLowerCase().trim());
     }
@@ -909,10 +914,10 @@ function regexParse(rawText) {
   for (let l of lines) {
     // --- JUNK LINES HATAO ---
     if (/🔔|order book|@serdiya/i.test(l)) continue;                        // boilerplate
-    if (/^(from|form)\b\s*[.:\-]?\s*\S/i.test(l)) continue;                  // From X / From.Dharmi / FROM - X
+    if (/^(from|form|forum|frm|fram|frome|froam|farom)\b\s*[.:\-]?\s*\S/i.test(l)) continue; // From X / Form.Dharmi / Forum khetaram / FROM - X
     if (/^[👤📦🚚💰]|शिपिंग|\bORD\s*#|\(ID:\s*\d+\)/iu.test(l)) continue;     // Margin bot footer
     // Product lines — lekin PEHLI line (customer ka naam: "Bali Ram", "Rakhi Devi") kabhi nahi hategi
-    if (out.length > 0 && PRODUCT_LINE_RE.test(l)) continue;
+    if (out.length > 0 && PRODUCT_LINE_RE.test(l) && !ADDRESS_HINT_RE.test(l)) continue;
     if (out.length > 0 && PRODUCT_DEV_RE.test(l)) continue; // कड़ा / चेन / अंगूठी jaisi Devanagari product line
     // "Sohankanthi+Tevti+Galachen" jaisi + wali combo line — koi bhi hissa product ho to poori line product hai
     if (out.length > 0 && /\+/.test(l) && l.split("+").length >= 2 &&
@@ -926,7 +931,14 @@ function regexParse(rawText) {
     if (out.length > 0) {
       const toks = l.split(/[\s,+()\-]+/).filter(Boolean);
       const isProd = (t) => PRODUCT_TOKEN_RE.test(t);
+      // (a) Poori line sirf product + number ho: "1 Chain 3 anguthi"
       if (toks.length && toks.some(isProd) && toks.every((t) => /^\d+$/.test(t) || isProd(t))) continue;
+
+      // (b) Brand/devta + product: "Balaji locate 2 Pc", "Hanuman Ji pendal", "Chain Balaji locket"
+      //     Rule: line CHHOTI ho, usme product word ho, aur koi ADDRESS-shabd na ho.
+      const hasProd = toks.some(isProd);
+      const looksLikeAddress = ADDRESS_HINT_RE.test(l) || /\d{5,}/.test(l);
+      if (hasProd && !looksLikeAddress && toks.length <= 5) continue;
     }
     // Size / quantity lines: "Size 24", "24 size", "22 no", "Ring size 26", "Size 24 26", "Size......"
     if (out.length > 0 && /^(?:size|saze)\s*[:.\-]*\s*[\d,.\s]*$/i.test(l)) continue;
@@ -940,8 +952,9 @@ function regexParse(rawText) {
     if (/^[a-z\s]+:\s*(n\/?a|nil|none|-+)\.?\s*$/i.test(l)) continue;
 
     // Baat-cheet / chat lines ("Hum dalna bhai", "ye bhej do") — bina digit, chhoti line, order-words ke saath
-    if (!/\d/.test(l) && l.split(/\s+/).length <= 5 &&
-        /(dalna|daal\s*d|dal\s*d|bhejna|bhej\s*d|jod\s*d|kar\s*d(o|ena)|likh\s*d|thank|shukriya|dhanyawad|jaldi)/i.test(l)) continue;
+    // (address-shabd wali line KABHI chat nahi mani jayegi — "Dalna Wali Gali" safe)
+    if (!/\d/.test(l) && l.split(/\s+/).length <= 5 && !ADDRESS_HINT_RE.test(l) &&
+        /\b(dalna|daal\s*d|dal\s*d|bhejna|bhej\s*do|bhej\s*dena|jod\s*d|kar\s*d(o|ena)|likh\s*d|thanks?|thank\s*you|shukriya|dhanyawad|jaldi)\b/i.test(l)) continue;
     if (/^(ring\s*)?size\s*[:\-]?\s*\d+/i.test(l)) continue;                 // "Size 24" / "Ring size 22"
 
     // --- Jaane-pehchane SENDER (Udaram Siyag, Ramaram...) bina "From" ke bhi hatao ---
@@ -962,9 +975,11 @@ function regexParse(rawText) {
     l = l.replace(/^(naam|name|नाम|नेम)\s*[.:\-–—]?\s+(?=\S)/i, "");
 
     // --- Pincode line: "Pin code" / "PIN COAD" / "Pin cold" / "Pin -" / "PIN:" / "पिन कोड" → sirf "581329" ---
-    const pinM = l.match(/^(?:p[i1]n[a-z\s.]*|पिन\s*कोड\s*)[:\-–—]?\s*(\d{6})\s*$/i);
+    // Sirf ASLI pincode-label: pin / pincode / pin code / pin coad / pin cold / pin kod / पिन कोड
+    // (pehle "p[i1]n[a-z\s.]*" tha jo "PATHANKOT" jaise shahar bhi kha jata tha)
+    const pinM = l.match(/^(?:p[i1]n\.?\s*(?:code|coad|cold|kod|cod|no\.?|number)?|पिन\s*कोड|पिन)\s*[:\-–—]?\s*(\d{6})\s*$/i);
     if (pinM) { out.push(pinM[1]); continue; }
-    if (/^(?:p[i1]n(\s*(code|coad|cold|kod))?|पिन\s*कोड)\s*[:\-–—]?\s*$/i.test(l)) continue; // khali "Pin code" label
+    if (/^(?:p[i1]n\.?\s*(?:code|coad|cold|kod|cod|no\.?|number)?|पिन\s*कोड|पिन)\s*[:\-–—]?\s*$/i.test(l)) continue; // khali "Pin code" label
 
     // --- COD normalize: COD/Payment/Pement/Amount... sab "COD ..." banenge ---
     const codM = l.match(new RegExp(`^(?:${COD_WORDS})(?![A-Za-z])\\s*[.:\\-–—]?\\s*(.+)$`, "i"));
@@ -1008,7 +1023,7 @@ function regexParse(rawText) {
     // Line ki shuruat ke labels: Address/Add/Contact/Alternative/Mo./Ph./Mobile/Phone...
     l = l.replace(/^(add|contact|alternative|mo\.?|ph\.?|mobile|phone|मोबाइल|मो|नंबर)\s*[.:\-–—,]\s*/i, "");
     // Akela khada label word kahi bhi ho to hatao: pin/code/phone/mobile (Pinki jaise naam safe)
-    l = l.replace(/\b(pin\s*code|pincode|pin|code|phone|mobile)\b/gi, " ");
+    l = l.replace(/\b(pin\s*code|pincode|pin|code|phone)\b|\bmobile\s*(?=[:.\-]|\s*\d)/gi, " ");
     l = l.replace(/(?<![\p{L}])(पिन|पीन|मोबाइल|मोब|नंबर)(?![\p{L}])/gu, " ");
     // number/num → No., aur khali "No." (bina digit) hatao
     l = l.replace(/\b(number|num)\b/gi, "No.");
@@ -1171,7 +1186,7 @@ function validate(rawText, cleanedText) {
   // Footer/junk lines (👤/📦/ID/शिपिंग/ORD#/From) SKIP karo — unme Telegram ID hoti hai, phone nahi
   const rawPhoneSet = new Set();
   for (const line of rawText.split("\n")) {
-    if (/^[👤📦🚚💰]|शिपिंग|\bORD\s*#|\(ID:\s*\d+\)|^(from|form)\s*[:\-]?\s/iu.test(line.trim())) continue;
+    if (/^[👤📦🚚💰]|शिपिंग|\bORD\s*#|\(ID:\s*\d+\)|^(from|form|forum|frm|fram)\s*[:\-]?\s/iu.test(line.trim())) continue;
     const compact = line.replace(/[\s-]/g, "");
     for (const m of compact.matchAll(/(?<!\d)(?:91|0)?([6-9]\d{9})(?!\d)/g)) rawPhoneSet.add(m[1]);
   }
@@ -1289,7 +1304,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v7.5 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v7.8 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1468,7 +1483,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v7.5 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v7.8 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1477,7 +1492,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v7.5 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v7.8 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

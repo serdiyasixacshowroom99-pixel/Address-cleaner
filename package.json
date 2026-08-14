@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "7.5.0",
-  "description": "Serdiya Address Bot v7.5 MASTER - auto-save, Hinglish, anti-hallucination (labels+weight), B.O/S.O preserved",
+  "version": "7.8.0",
+  "description": "Serdiya Address Bot v7.8 MASTER - word-boundary fixes (PATHANKOT, Pin code), all guards",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
