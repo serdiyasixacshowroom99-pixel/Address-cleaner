@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "7.8.0",
-  "description": "Serdiya Address Bot v7.8 MASTER - word-boundary fixes (PATHANKOT, Pin code), all guards",
+  "version": "8.0.0",
+  "description": "Serdiya Address Bot v8.0 MASTER - product-position rule, bare-COD fallback, trailing colon fix",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

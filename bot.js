@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v7.8 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v8.0 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -199,6 +199,7 @@ TUMHARI POWER:
 HATA DO: product lines (Chain/Bali/Anguthi/AGUTHI/BHALI/Rakhdi/Ring/Kada/Galachen + typos), "From ..." lines, baat-cheet ("Hum dalna bhai"), footer (👤 ID / 📦 शिपिंग / ORD #), akela "pin"/"code" label words, akela chhota number (20, 22 = size).
 🚨 SENDER/AGENT ka naam ("From X" line ya footer 👤 wala — Devanagari ya Roman kisi bhi script me ho) KABHI bhi landmark nahi banega. "Near <sender ka naam>" jaisa fake landmark MAT BANAO — sender ka naam poori tarah HATA do, address me kahi bhi mat likho, kisi bhi roop me nahi.
 Weight/COD/pincode jaisa koi bhi NUMBER agar raw me kahi bhi na mile to KHUD SE mat banao — us line ko chhod do.
+RESELLER KA NOTE/COMMENT bhi HATA DO: "रिसेलर ने एड्रेस सुधारा", "address change", "sahi address", "dubara bheja", "update address", "correction" jaisi lines address ka hissa NAHI hai — inhe poori tarah chhod do.
 SENDER KA NAAM: "Udaram Siyag", "Ramaram Serdiy", "Laxman Siyag", "Bhomaram", "Dharmi", "Ghanshyam" jaise BHEJNE WALE ka naam address me akela likha ho (bina From ke bhi) to PURA HATA do — ye customer ka address NAHI hai. Use "Near X" landmark KABHI mat banao. "Near" sirf tab likho jab raw me khud "near/ke pass/paas/samne" likha ho — khud se KABHI mat jodo.
 
 FORMAT: Name → Phone(s) alag lines → Address (structured) → State → Pincode → COD (math waise hi, Payment/Pement/Pay/Cash = COD) → Weight ("80g") aakhri.
@@ -936,9 +937,16 @@ function regexParse(rawText) {
 
       // (b) Brand/devta + product: "Balaji locate 2 Pc", "Hanuman Ji pendal", "Chain Balaji locket"
       //     Rule: line CHHOTI ho, usme product word ho, aur koi ADDRESS-shabd na ho.
-      const hasProd = toks.some(isProd);
+      // Sirf tab hatao jab line ka BADA hissa product ho (>=50% words), warna
+      // "Lamkhede mala" / "Sundar sen colony" jaise ASLI naam kat jate hai
+      const prodCount = toks.filter(isProd).length;
       const looksLikeAddress = ADDRESS_HINT_RE.test(l) || /\d{5,}/.test(l);
-      if (hasProd && !looksLikeAddress && toks.length <= 5) continue;
+      // Product line ka pattern: (a) 50%+ words product ho, YA
+      // (b) line PRODUCT ya brand+product se SHURU ho ("Hanuman Ji pendal", "Balaji locate")
+      // "Lamkhede mala" jaise naam bache rahe — kyunki product word AAKHIR me hai
+      const startsProduct = isProd(toks[0]) || (toks.length >= 3 && toks.slice(1).some(isProd));
+      const mostlyProduct = toks.length > 0 && (prodCount / toks.length > 0.5 || startsProduct);
+      if (mostlyProduct && !looksLikeAddress && toks.length <= 5) continue;
     }
     // Size / quantity lines: "Size 24", "24 size", "22 no", "Ring size 26", "Size 24 26", "Size......"
     if (out.length > 0 && /^(?:size|saze)\s*[:.\-]*\s*[\d,.\s]*$/i.test(l)) continue;
@@ -951,10 +959,20 @@ function regexParse(rawText) {
     if (/^\s*(n\/?a|nil|none)\.?\s*$/i.test(l)) continue;
     if (/^[a-z\s]+:\s*(n\/?a|nil|none|-+)\.?\s*$/i.test(l)) continue;
 
+    // --- RESELLER KA NOTE / COMMENT hatao (address ka hissa nahi) ---
+    //     "रिसेलर ने एड्रेस सुधारा", "Riselar Ne Edres Sudhara", "address change",
+    //     "sahi address", "dubara bheja", "update address", "correction" waghera
+    {
+      const noteWords = /(risel[ae]r|reseller|address|adress|edres|adres|एड्रेस|पता)/i;
+      const noteAction = /\b(sudhara|sudhar|sudhaar|thik|theek|sahi|change|chenj|correction|correct|update|apdet|updet|dubara|dobara|dubaara|badla|badal|naya|new|galat|wrong|purana|old|resend|repeat|note|dhyan)\b|(सुधार|सही|बदल|गलत|दुबारा|दोबारा|नया|पुराना|चेंज|अपडेट|ध्यान|नोट)/i;
+      if (out.length > 0 && !/\d{6}/.test(l) && !/[6-9]\d{9}/.test(l) &&
+          l.split(/\s+/).length <= 8 && noteWords.test(l) && noteAction.test(l)) continue;
+    }
+
     // Baat-cheet / chat lines ("Hum dalna bhai", "ye bhej do") — bina digit, chhoti line, order-words ke saath
     // (address-shabd wali line KABHI chat nahi mani jayegi — "Dalna Wali Gali" safe)
     if (!/\d/.test(l) && l.split(/\s+/).length <= 5 && !ADDRESS_HINT_RE.test(l) &&
-        /\b(dalna|daal\s*d|dal\s*d|bhejna|bhej\s*do|bhej\s*dena|jod\s*d|kar\s*d(o|ena)|likh\s*d|thanks?|thank\s*you|shukriya|dhanyawad|jaldi)\b/i.test(l)) continue;
+        /\b(dalna|daal\s*d|dal\s*d|bhejna|bhej\s*d(o|ena|iya)?|bheja|jod\s*d|kar\s*d(o|ena)|likh\s*d|thanks?|thank\s*you|shukriya|dhanyawad|jaldi|dubara|dobara|dubaara|phir\s*se|fir\s*se)\b/i.test(l)) continue;
     if (/^(ring\s*)?size\s*[:\-]?\s*\d+/i.test(l)) continue;                 // "Size 24" / "Ring size 22"
 
     // --- Jaane-pehchane SENDER (Udaram Siyag, Ramaram...) bina "From" ke bhi hatao ---
@@ -1099,13 +1117,26 @@ function regexParse(rawText) {
         let cleaned = l
           .replace(new RegExp("(?<!\\d)" + m[1] + "(?!\\d)"), "")
           .replace(/\s*[-–—]\s*([,.]|$)/g, "$1")
-          .replace(/[,\s\-–—]+$/g, "")
+          .replace(/[,:\s\-–—]+$/g, "")
           .replace(/\s{2,}/g, " ")
           .trim();
         if (cleaned) out.splice(i, 1, cleaned, m[1]);
         else out.splice(i, 1, m[1]);
         break;
       }
+    }
+  }
+
+  // --- COD line hi nahi bani, par koi standalone BADA number pada hai ("1800")? ---
+  //     Reseller ne "COD" label bhulaya hoga — use COD maan lo
+  if (!out.some((l) => /^COD\b/i.test(l))) {
+    const idx = out.findIndex(
+      (l, i) => i > 0 && /^\d{3,5}$/.test(l.trim()) && parseInt(l.trim(), 10) >= 100
+    );
+    if (idx !== -1) {
+      const amt = out[idx].trim();
+      out.splice(idx, 1);
+      out.push("COD " + amt);
     }
   }
 
@@ -1304,7 +1335,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v7.8 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v8.0 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1483,7 +1514,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v7.8 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v8.0 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1492,7 +1523,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v7.8 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v8.0 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
