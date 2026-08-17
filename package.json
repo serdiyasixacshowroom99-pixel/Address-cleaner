@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "8.0.0",
-  "description": "Serdiya Address Bot v8.0 MASTER - product-position rule, bare-COD fallback, trailing colon fix",
+  "version": "8.2.0",
+  "description": "Serdiya Address Bot v8.2 MASTER - Google Sheets quota auto-retry, safer queue pacing",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

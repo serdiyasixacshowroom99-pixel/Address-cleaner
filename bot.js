@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v8.0 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v8.2 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -495,6 +495,10 @@ const PRODUCT_LINE_RE = new RegExp(
   `^(?:${PRODUCT_WORDS_SRC})\\b(?!\\s+(?:road|marg|nagar|chowk|chauraha|gali|colony|street|bazar|bazaar|market|mohalla|pura|puram|wadi|park|vihar|complex|mandi|gaon|gram|niwas|bhawan|sadan|villa|house|society|apartment))`,
   "i"
 );
+// Sirf ASLI product words (qty/unit words alag hai)
+const PRODUCT_ONLY_RE = new RegExp(`^(?:${PRODUCT_WORDS_SRC})\\.?$`, "i");
+// Qty/unit words — ye AKELE product nahi hai ("SURVEY NO. 70" me "NO." product nahi)
+const QTY_TOKEN_RE = /^(?:pc|pcs|pec|pics?|piece|pis|ps|pair|size|saze|no|nag|ng|gm|inch)\.?$/i;
 const PRODUCT_TOKEN_RE = new RegExp(
   `^(?:${PRODUCT_WORDS_SRC}|pc|pcs|pec|pics?|piece|pis|ps|pair|size|saze|no|nag|ng|gm|inch)\\.?$`,
   "i"
@@ -511,7 +515,7 @@ const PRODUCT_TOKEN_RE = new RegExp(
 const DEV_MAP = {
   // Swar (independent vowels)
   "अ":"a","आ":"aa","इ":"i","ई":"ee","उ":"u","ऊ":"oo","ऋ":"ri","ए":"e","ऐ":"ai","ओ":"o","औ":"au",
-  "ॲ":"a","ऑ":"o",
+  "ॲ":"a","ऑ":"o","ऍ":"e","ऎ":"e","ऒ":"o","ॠ":"ri","ऌ":"li","ॡ":"li","ॐ":"om",
   // Vyanjan
   "क":"k","ख":"kh","ग":"g","घ":"gh","ङ":"n",
   "च":"ch","छ":"chh","ज":"j","झ":"jh","ञ":"n",
@@ -533,7 +537,7 @@ function devToHinglish(text) {
   if (!/[\u0900-\u097F]/.test(text)) return text;
   const CONS = "कखगघङचछजझञटठडढणतथदधनपफबभमयरलवळशषसहक़ख़ग़ज़ड़ढ़फ़य़";
   const MATRA = "ािीुूृेैोौॉॅ";
-  const VOWEL = "अआइईउऊऋएऐओऔऑॲ";
+  const VOWEL = "अआइईउऊऋएऐओऔऑॲऍऎऒॠऌॡ";
 
   // Har Devanagari shabd ko alag-alag transliterate karo
   return text.replace(/[\u0900-\u097F]+/g, (word) => {
@@ -939,12 +943,14 @@ function regexParse(rawText) {
       //     Rule: line CHHOTI ho, usme product word ho, aur koi ADDRESS-shabd na ho.
       // Sirf tab hatao jab line ka BADA hissa product ho (>=50% words), warna
       // "Lamkhede mala" / "Sundar sen colony" jaise ASLI naam kat jate hai
-      const prodCount = toks.filter(isProd).length;
+      const prodCount = toks.filter((t) => PRODUCT_ONLY_RE.test(t) || QTY_TOKEN_RE.test(t)).length;
       const looksLikeAddress = ADDRESS_HINT_RE.test(l) || /\d{5,}/.test(l);
       // Product line ka pattern: (a) 50%+ words product ho, YA
       // (b) line PRODUCT ya brand+product se SHURU ho ("Hanuman Ji pendal", "Balaji locate")
       // "Lamkhede mala" jaise naam bache rahe — kyunki product word AAKHIR me hai
-      const startsProduct = isProd(toks[0]) || (toks.length >= 3 && toks.slice(1).some(isProd));
+      // "NO." / "PC" jaise qty-words se line product nahi banti ("SURVEY NO. 70" safe)
+      const isRealProd = (t) => PRODUCT_ONLY_RE.test(t);
+      const startsProduct = isRealProd(toks[0]) || (toks.length >= 3 && toks.slice(1).some(isRealProd));
       const mostlyProduct = toks.length > 0 && (prodCount / toks.length > 0.5 || startsProduct);
       if (mostlyProduct && !looksLikeAddress && toks.length <= 5) continue;
     }
@@ -1130,11 +1136,15 @@ function regexParse(rawText) {
   // --- COD line hi nahi bani, par koi standalone BADA number pada hai ("1800")? ---
   //     Reseller ne "COD" label bhulaya hoga — use COD maan lo
   if (!out.some((l) => /^COD\b/i.test(l))) {
-    const idx = out.findIndex(
-      (l, i) => i > 0 && /^\d{3,5}$/.test(l.trim()) && parseInt(l.trim(), 10) >= 100
-    );
+    const idx = out.findIndex((l, i) => {
+      if (i === 0) return false;
+      const t = l.trim();
+      // (a) "1500-100=1400" jaisa COD-math   (b) akela bada number "1800"
+      return /^\d{3,6}\s*-\s*\d{1,5}\s*=\s*\d{3,6}$/.test(t) ||
+             (/^\d{3,5}$/.test(t) && parseInt(t, 10) >= 100);
+    });
     if (idx !== -1) {
-      const amt = out[idx].trim();
+      const amt = out[idx].trim().replace(/\s+/g, "");
       out.splice(idx, 1);
       out.push("COD " + amt);
     }
@@ -1291,6 +1301,8 @@ function validate(rawText, cleanedText) {
 // ============================================================
 //  3) GOOGLE SHEETS ENTRY
 // ============================================================
+// Google Sheets ki limit: 60 write/minute. Quota-error aaye to RUK kar dobara try karo
+// (5 baar tak — 5s, 15s, 30s, 60s, 90s). Address kabhi kho na jaye.
 async function appendOneRow(raw, cleaned, status, note) {
   const auth = new google.auth.JWT(
     GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -1300,12 +1312,26 @@ async function appendOneRow(raw, cleaned, status, note) {
   );
   const sheets = google.sheets({ version: "v4", auth });
   const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_TAB}!A:E`,
-    valueInputOption: "RAW",
-    requestBody: { values: [[raw, cleaned, now, status, note || ""]] },
-  });
+  const waits = [5000, 15000, 30000, 60000, 90000];
+
+  for (let attempt = 0; attempt <= waits.length; attempt++) {
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: SHEET_ID,
+        range: `${SHEET_TAB}!A:E`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[raw, cleaned, now, status, note || ""]] },
+      });
+      return; // ho gaya
+    } catch (e) {
+      const msg = String(e && e.message);
+      const isQuota =
+        /quota|rate limit|rateLimitExceeded|userRateLimitExceeded|429|500|503|backend/i.test(msg);
+      if (!isQuota || attempt === waits.length) throw e;
+      console.log(`⏳ Sheets quota — ${waits[attempt] / 1000}s ruk kar dobara try (${attempt + 1}/${waits.length})`);
+      await sleep(waits[attempt]);
+    }
+  }
 }
 
 async function appendRowsToSheet(entries) {
@@ -1335,7 +1361,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v8.0 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v8.2 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1358,7 +1384,8 @@ async function processQueue() {
     } catch (e) {
       console.error("Queue error:", e.message);
     }
-    if (queue.length) await sleep(700);
+    // 1.2s gap — Google Sheets ki 60 write/minute limit ke andar rehne ke liye
+    if (queue.length) await sleep(1200);
   }
   working = false;
 }
@@ -1495,9 +1522,11 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
     await appendOneRow(raw, cleaned, status, note);
   } catch (e) {
     console.error("Sheet save fail:", e.message);
-    return tgRetry(() =>
-      ctx.reply("❌ Sheet me save nahi ho paya: " + e.message.substring(0, 150), replyTo)
-    );
+    const quota = /quota|rate limit|429/i.test(String(e && e.message));
+    const msg = quota
+      ? "⚠️ *Ye address Sheet me NAHI gaya* — Google ki limit lag gayi (ek minute me bahut saare address).\n\n🔁 Thodi der baad ise DOBARA bhej do."
+      : "❌ *Sheet me save nahi ho paya:* " + String(e.message).substring(0, 150) + "\n\n🔁 Ise dobara bhej do.";
+    return tgRetry(() => ctx.reply(msg, { parse_mode: "Markdown", ...replyTo }));
   }
 
   // ---------- STEP 6: Jawab SIRF error pe ----------
@@ -1514,7 +1543,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v8.0 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v8.2 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1523,7 +1552,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v8.0 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v8.2 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
