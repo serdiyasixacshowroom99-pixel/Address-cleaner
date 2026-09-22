@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v8.2 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v8.7 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -447,17 +447,18 @@ function isKnownSender(line) {
 // 💍 PURI JEWELRY PRODUCT LIST (typos samet) — Serdiya ke saare products
 const PRODUCT_WORDS_SRC =
   // Chain + saare typos
-  "chain\\w*|chen|chan|chin|china|chaina|shain|sikri|sikdi|" +
+  "chains?|chen|chan|chin|china|chaina|shain|sikri|sikdi|" +
   // Bali / earrings / jhumka
   "bali|bhali|vali|earring\\w*|earing\\w*|tops|jhum\\w*|jumki|jumka|jhumar|murka|murki|" +
   // Anguthi / ring
-  "anguthi|aguthi|aaguthi|anguti|angoothi|anghuthi|anuthi|ring\\w*|challa|chhalla|finger|" +
+  "anguthi|aguthi|aaguthi|anguti|angoothi|anghuthi|anuthi|rings?|challa|chhalla|finger|" +
   // Rakhdi
   "rakhdi|rakhri|rakhi|" +
   // Payal
   "payal|pajeb|payjeb|panjeb|" +
   // Mangalsutra
-  "mangalsutra|mangalsutr\\w*|manglsutar\\w*|mglsutar\\w*|" +
+  "mangalsutra|mangalsutr\\w*|manglsutar\\w*|mglsutar\\w*|mangal|mangl|" +
+  "plate|plet|tabij|taweez|tabiz|kavach|kawach|" +
   // Set / combo
   "set|combo|kombo|jodi|" +
   // Galachen
@@ -652,7 +653,14 @@ function enforceFormat(text) {
     addr.push(l);
   }
   const name = addr.shift() || "";
-  return [name, ...phones, ...addr, pin, cod, wt].filter(Boolean).join("\n");
+  // S/O, W/O, D/O (son/wife/daughter of) naam ki pehchaan ka hissa hai — phone se PEHLE,
+  // naam ke saath rakho. (Slash zaruri: "KHICHAN S.O" = Sub Office, wo address me hi rahega.
+  //  C/O = care of, wo bhi address me hi rahega.)
+  const relation = [];
+  while (addr.length && /^(?:[SWD]\s*\/\s*[O0]\b|son\s+of\b|wife\s+of\b|daughter\s+of\b)/i.test(addr[0])) {
+    relation.push(addr.shift());
+  }
+  return [name, ...relation, ...phones, ...addr, pin, cod, wt].filter(Boolean).join("\n");
 }
 
 // NOTE (v7.2): India Post pincode-verification poora HATA diya gaya hai.
@@ -950,7 +958,13 @@ function regexParse(rawText) {
       // "Lamkhede mala" jaise naam bache rahe — kyunki product word AAKHIR me hai
       // "NO." / "PC" jaise qty-words se line product nahi banti ("SURVEY NO. 70" safe)
       const isRealProd = (t) => PRODUCT_ONLY_RE.test(t);
-      const startsProduct = isRealProd(toks[0]) || (toks.length >= 3 && toks.slice(1).some(isRealProd));
+      // Devta/brand ka naam + product ("Balaji Plate", "Hanuman Locket") — ye product line hai.
+      // ("Balaji Mandir", "Shyam Nagar" me address-shabd hai isliye wo pehle hi safe hai)
+      const DEITY = /^(balaji|hanuman|ramdev|ramdevji|shyam|khatu|krishna|ganesh|shiv|shiva|radha|sai|tirupati|bhomiya|nakoda|salasar|mata|maa|devi|baba|shree|shri|sri|ad|a\.d|gold|golden|silver|german|oxidised|oxidized|brass|copper|cz|kundan|meena|antique|forming|victorian|matt|matte|plated|fancy|premium|heavy|light|rose|rosegold)$/i;
+      const startsProduct =
+        isRealProd(toks[0]) ||
+        (toks.length >= 3 && toks.slice(1).some(isRealProd)) ||
+        (toks.length === 2 && DEITY.test(toks[0]) && isRealProd(toks[1]));
       const mostlyProduct = toks.length > 0 && (prodCount / toks.length > 0.5 || startsProduct);
       if (mostlyProduct && !looksLikeAddress && toks.length <= 5) continue;
     }
@@ -971,7 +985,12 @@ function regexParse(rawText) {
     {
       const noteWords = /(risel[ae]r|reseller|address|adress|edres|adres|एड्रेस|पता)/i;
       const noteAction = /\b(sudhara|sudhar|sudhaar|thik|theek|sahi|change|chenj|correction|correct|update|apdet|updet|dubara|dobara|dubaara|badla|badal|naya|new|galat|wrong|purana|old|resend|repeat|note|dhyan)\b|(सुधार|सही|बदल|गलत|दुबारा|दोबारा|नया|पुराना|चेंज|अपडेट|ध्यान|नोट)/i;
-      if (out.length > 0 && !/\d{6}/.test(l) && !/[6-9]\d{9}/.test(l) &&
+      // 🛡️ Line me ASLI address-shabd ho (Near/Enclave/University/Road...) to ye note NAHI hai.
+      //    "new/naya/old/purana/main" pehle hata kar jaancho — warna "Near New Amity University"
+      //    jaisi asli line "naya address" samjhi ja rahi thi.
+      const probe = l.replace(/\b(new|naya|nayi|old|purana|purani|main|address|adress|edres|adres)\b/gi, " ");
+      const hasRealAddress = ADDRESS_HINT_RE.test(probe);
+      if (out.length > 0 && !hasRealAddress && !/\d{6}/.test(l) && !/[6-9]\d{9}/.test(l) &&
           l.split(/\s+/).length <= 8 && noteWords.test(l) && noteAction.test(l)) continue;
     }
 
@@ -1361,7 +1380,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v8.2 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v8.7 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1543,7 +1562,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v8.2 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v8.7 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1552,7 +1571,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v8.2 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v8.7 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

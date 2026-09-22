@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "8.2.0",
-  "description": "Serdiya Address Bot v8.2 MASTER - Google Sheets quota auto-retry, safer queue pacing",
+  "version": "8.7.0",
+  "description": "Serdiya Address Bot v8.7 MASTER - S/O W/O D/O kept with name (before phone)",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
