@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v8.8 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v9.0 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -1254,6 +1254,184 @@ const PIN_STATE = {
   83: ["Jharkhand"], 84: ["Bihar"], 85: ["Bihar", "Jharkhand"],
 };
 
+// ============================================================
+//  ADDRESS FITTER (v9.0) — booking ke time lamba address KAT jata hai,
+//  isliye ASLI address (naam / phone / pincode / COD / weight ko CHHOD kar)
+//  ko 100 character ke andar laate hai.
+//
+//  SIDHI BAAT: 100 ke ANDAR hai to kuch bhi nahi chhuta. Jab bada ho tabhi,
+//  neeche wali SEEDHI me, aur jaise hi fit ho jaye WAHI RUK jaata hai —
+//  zarurat se zyada kabhi nahi katta.
+//    1. Label chhote karo      (Post Office: → PO)      — kuch nahi khota
+//    2. Ek hi naam baar-baar   (PO/Teh/Dist Sitapur)    — kuch nahi khota
+//    3. Aam shabd chhote       (Road → Rd)              — kuch nahi khota
+//    4. State hatao            (pincode se pata chalta hai)
+//    5. Landmark hatao         (Near ... wala hissa)    — sabse aakhir me
+//
+//  Gaon ka naam, PO, makan/ward number, Tehsil, Dist KABHI nahi hatte.
+// ============================================================
+const ADDR_LIMIT = 100;
+
+const ALL_STATES = [...new Set(Object.values(PIN_STATE).flat())];
+
+// Address block alag karo — enforceFormat jaisa hi batwara
+function splitParts(text) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const head = [], tail = [], addr = [];
+  let seenAddr = false;
+  for (const l of lines) {
+    if (/^[6-9]\d{9}$/.test(l) || /^(?:[SWD]\s*\/\s*[O0]\b|son\s+of\b|wife\s+of\b|daughter\s+of\b)/i.test(l)) {
+      (seenAddr ? addr : head).push(l); continue;
+    }
+    if (/^\d{6}$/.test(l) || /^COD\s+[\d,]/i.test(l) || /^\d+g$/i.test(l)) { tail.push(l); continue; }
+    if (!seenAddr && head.length === 0) { head.push(l); continue; } // naam = pehli line
+    seenAddr = true; addr.push(l);
+  }
+  return { head, addr, tail };
+}
+
+const addrLen = (addr) => addr.join("\n").length;
+
+function fitAddress(text, limit = ADDR_LIMIT) {
+  const { head, addr, tail } = splitParts(text);
+  if (addr.length === 0 || addrLen(addr) <= limit) return text; // 82% yahi se wapas
+  let A = addr.slice();
+  const done = () => addrLen(A) <= limit;
+  const tidy = (arr) =>
+    arr.map((s) => s.replace(/\s{2,}/g, " ").replace(/\s+,/g, ",")
+                    .replace(/^[\s,:\-–—]+|[\s,:\-–—]+$/g, "").trim())
+       .filter(Boolean);
+
+  // ---- 1. LABEL chhote (kuch nahi khota) ----
+  const LBL = [
+    [/\bv\.?\s*p\.?\s*o\.?\s*[:\-–—]?\s*/gi, "VPO "],
+    [/\b(?:post\s*off?ice|post|p\.?\s*o\.?)\s*[:\-–—]\s*/gi, "PO "],
+    [/\b(?:village|vill|gram|gaon)\s*\/?\s*[:\-–—]\s*/gi, "Vill "],
+    [/\b(?:tehsil|tahsil|taluka|taluk|teh)\s*(?:\/\s*mandal)?\s*[:\-–—]\s*/gi, "Teh "],
+    [/\b(?:district|distt?)\s*[:\-–—]\s*/gi, "Dist "],
+    [/\b(?:state|city|town|landmark|land\s*mark|area|locality|colony\s*\/\s*area)\s*(?:\/\s*\w+)?\s*[:\-–—.]\s*/gi, ""],
+    [/\b(house|plot|flat|shop|ward|room|gali|street|survey)\s*(?:\/\s*\w+)?\s*no\.?\s*[:\-–—]?\s*/gi, (m, w) => w + " "],
+    // Bina colon ke label: "Post Office Jogeshwari", "District Wardha", "Village Khapri"
+    // (aage road/marg/nagar ho to mat chhedo — "Village Road" naam bach jaye)
+    [/(^|,\s*)post\s*off?ice\s+(?!(?:rd|road|marg|ngr|nagar)\b)/gi, "$1PO "],
+    [/(^|,\s*)(?:village|gram)\s+(?!(?:rd|road|marg|ngr|nagar)\b)/gi, "$1Vill "],
+    [/(^|,\s*)(?:district|distt)\s+(?!(?:rd|road|marg|ngr|nagar)\b)/gi, "$1Dist "],
+    // Hinglish labels — "Jila Etawah", "Gav Jogeshwari", "Mu Khapri"
+    [/(^|,\s*)(?:jila|jilla|zila)\s*[:\-–—]?\s*(?!(?:rd|road|marg|ngr|nagar)\b)/gi, "$1Dist "],
+    [/(^|,\s*)(?:gav|gaon|ganv)\s*[:\-–—]?\s+(?!(?:rd|road|marg|ngr|nagar)\b)/gi, "$1Vill "],
+    [/(^|,\s*)(?:tehsil|tahsil|taluka)\s+(?!(?:rd|road|marg|ngr|nagar)\b)/gi, "$1Teh "],
+  ];
+  A = tidy(A.map((s) => { for (const [re, to] of LBL) s = s.replace(re, to); return s; }))
+        .filter((s) => !/^(?:PO|VPO|Vill|Teh|Dist)$/i.test(s)); // khali label line
+  if (done()) return rebuild(head, A, tail);
+
+  // ---- 2. Ek hi naam PO/Vill/Teh/Dist me baar-baar → ek line (kuch nahi khota) ----
+  {
+    const grp = {};
+    A.forEach((s, i) => {
+      const m = s.match(/^(PO|VPO|Vill|Teh|Dist)\s+(.+)$/i);
+      if (m) (grp[m[2].trim().toLowerCase()] ||= []).push({ i, lab: m[1], name: m[2].trim() });
+    });
+    const drop = new Set();
+    for (const k in grp) {
+      const g = grp[k];
+      if (g.length < 2) continue;
+      const labs = [...new Set(g.map((x) => x.lab))].join("/");
+      A[g[0].i] = labs + " " + g[0].name;
+      g.slice(1).forEach((x) => drop.add(x.i));
+    }
+    if (drop.size) A = A.filter((_, i) => !drop.has(i));
+  }
+  if (done()) return rebuild(head, A, tail);
+
+  // ---- 2b. Wahi jagah ka naam poore address me baar-baar (kuch nahi khota) ----
+  //      "PO Jogeshwari West S.O., Jogeshwari West, ..., Gav Jogeshwari West"
+  //      LABEL wala hissa HAMESHA rahega (aapka niyam), sirf BINA-LABEL wali
+  //      nakal hategi jo kisi dusre hisse ke andar pehle se maujood hai.
+  {
+    const LAB = /^(?:PO|VPO|Vill|Teh|Dist|Gav|Gaon|Ganv|Gram|Jila|Mu|Via|H\.?No|Ward|Plot|Flat|Shop|House)\b/i;
+    const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const parts = []; // {li, pi, txt}
+    A.forEach((l, li) => l.split(/\s*,\s*/).forEach((p, pi) => parts.push({ li, pi, txt: p.trim() })));
+    const kill = new Set();
+    for (const p of parts) {
+      const n = norm(p.txt);
+      if (!n || n.length < 4 || LAB.test(p.txt)) continue; // label wala kabhi nahi
+      const inside = parts.some(
+        (q) => q !== p && !kill.has(q) && norm(q.txt) !== n &&
+               new RegExp("(^| )" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "( |$)").test(norm(q.txt))
+      );
+      if (inside) kill.add(p);
+    }
+    if (kill.size) {
+      A = tidy(A.map((l, li) =>
+        l.split(/\s*,\s*/).filter((_, pi) => ![...kill].some((k) => k.li === li && k.pi === pi)).join(", ")
+      ));
+    }
+  }
+  if (done()) return rebuild(head, A, tail);
+
+  // ---- 3. Aam shabd chhote (kuch nahi khota) ----
+  const WORD = [
+    [/\broad\b/gi, "Rd"], [/\bnagar\b/gi, "Ngr"], [/\bcolony\b/gi, "Col"],
+    [/\bsociety\b/gi, "Soc"], [/\bbuilding\b/gi, "Bldg"], [/\bopposite\b/gi, "Opp"],
+    [/\bnear\b/gi, "Nr"], [/\bbehind\b/gi, "Beh"], [/\bmarket\b/gi, "Mkt"],
+    [/\bapartment\b/gi, "Apt"], [/\bhospital\b/gi, "Hosp"], [/\bstation\b/gi, "Stn"],
+    [/\bcross(?:ing)?\b/gi, "Crsg"], [/\bnumber\b/gi, "No"], [/\bfloor\b/gi, "Flr"],
+  ];
+  A = tidy(A.map((s) => { for (const [re, to] of WORD) s = s.replace(re, to); return s; }));
+  if (done()) return rebuild(head, A, tail);
+
+  // ---- 4. BHARATIYA DAK ki zarurat ke hisaab se hatao ----
+  //
+  //  Speed Post ka asli safar:
+  //    PIN CODE  → parcel sahi delivery post office tak pahunchta hai (machine sorting)
+  //    PO / Gaon → us office ka DAAKIYA apne beat me dhundhta hai
+  //    Makan no / Landmark → aakhri darwaza
+  //
+  //  "India" ko koi nahi padhta (saara parcel desh ke andar hi hai).
+  //  State / District / Tehsil bhi daakiya nahi padhta — wo PIN se pehle hi tay ho chuke.
+  //  Isliye SABSE PEHLE wahi hatte hai, aur LANDMARK SABSE AAKHIR me —
+  //  kyunki gaon-dehat me daakiya asal me usi se ghar dhundhta hai.
+  //
+  //  Hatane ka kram (sabse kam kaam ka → sabse zyada kaam ka):
+  //     India  →  State  →  District  →  Tehsil  →  Landmark
+  //  Gaon, PO, makan/ward number KABHI nahi hatte.
+  {
+    const bare = (s) => s.trim().toLowerCase().replace(/[^a-z& ]/g, "").trim();
+    const isIndia = (s) => /^(?:india|bharat|bharath|hindustan|ind)$/.test(bare(s));
+    const isState = (s) => ALL_STATES.some((st) => st.toLowerCase() === bare(s));
+    const isDist  = (s) => /^dist\b/i.test(s.trim());
+    const isTeh   = (s) => /^teh\b/i.test(s.trim());
+    const LM      = /^(?:Nr|Opp|Beh|samne|paas|pass)\b/i;
+    // 🛡️ Jis hisse me koi NUMBER ho use KABHI mat hatao — "Opp Lifeline Hospital Plot No 1"
+    //    me "Plot No 1" ASLI makan ka number ho sakta hai. Thoda lamba rehna chalega,
+    //    par makan ka number kabhi nahi khona chahiye.
+    const isLM = (s) => LM.test(s.trim()) && !/\d/.test(s);
+
+    // Ek-ek karke hatao, aur jaise hi 100 ke andar aaya WAHI RUK JAO
+    for (const drop of [isIndia, isState, isDist, isTeh, isLM]) {
+      if (done()) break;
+      // (a) PEHLE sirf comma wala HISSA ("Opp Prajapati Soc, Vimal Parinda" me se
+      //     sirf "Opp Prajapati Soc" jaye — "Vimal Parinda" ASLI jagah ka naam hai)
+      const next = tidy(A.map((s) => {
+        const p = s.split(/\s*,\s*/).filter((x) => !drop(x));
+        return p.length ? p.join(", ") : s;        // poori line khali mat karo
+      }));
+      if (next.length) A = next;
+      if (done()) break;
+      // (b) PHIR poori line (jo puri ki puri wahi cheez ho)
+      const keep = A.filter((s) => !drop(s));
+      if (keep.length) A = keep;                  // poora address wahi ho to mat hatao
+    }
+  }
+  return rebuild(head, A, tail);
+}
+
+function rebuild(head, addr, tail) {
+  return [...head, ...addr, ...tail].filter(Boolean).join("\n");
+}
+
 function validate(rawText, cleanedText) {
   rawText = normalizeRaw(rawText); // same normalizer — warna false "missing" errors aate hai
 
@@ -1424,7 +1602,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v8.8 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v9.0 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1572,6 +1750,20 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
     if (la.applied.length) cleaned = la.text;
   }
 
+  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.0) ----------
+  // Booking ke time lamba address KAT jata hai. Naam / phone / pincode / COD / weight
+  // ko haath nahi lagta — sirf beech ka ASLI address chhota hota hai, aur wo bhi
+  // TABHI jab 100 se bada ho. (validate() upar hi ho chuka hai — poore address par.)
+  {
+    const fit = fitAddress(cleaned);
+    if (fit !== cleaned) {
+      const was = splitParts(cleaned).addr.join("\n").length;
+      const now = splitParts(fit).addr.join("\n").length;
+      console.log(`📏 Address chhota kiya: ${was} → ${now} chars`);
+      cleaned = fit;
+    }
+  }
+
   // ---------- STEP 4: Sheet me SEEDHA save ----------
   // NOTE (v7.2): India Post pincode-milaan poori tarah BAND.
   // Reseller ka likha pincode hi final hai — bot na suggestion deta hai, na warning.
@@ -1606,7 +1798,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v8.8 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v9.0 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1615,7 +1807,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v8.8 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v9.0 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "8.8.0",
-  "description": "Serdiya Address Bot v8.8 MASTER - glued qty (1pis/2pcs) products removed, Devanagari duplicate words fixed, bare Rs/INR COD",
+  "version": "9.0.0",
+  "description": "Serdiya Address Bot v9.0 MASTER - address fit to 100 chars by India Post Speed Post priority (India/State/District/Tehsil go first, landmark last)",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
