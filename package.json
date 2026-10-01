@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "8.7.0",
-  "description": "Serdiya Address Bot v8.7 MASTER - S/O W/O D/O kept with name (before phone)",
+  "version": "8.8.0",
+  "description": "Serdiya Address Bot v8.8 MASTER - glued qty (1pis/2pcs) products removed, Devanagari duplicate words fixed, bare Rs/INR COD",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

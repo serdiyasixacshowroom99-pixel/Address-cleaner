@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v8.7 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v8.8 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -618,6 +618,9 @@ function normalizeRaw(raw) {
   // (?![A-Za-z]) zaruri hai — warna "Pin code" ka "cod" bhi COD ban jata tha.
   // Lekin digit chalega, taaki "COD1500" bhi pakda jaye.
   t = t.replace(/(?<![A-Za-z])(cod|c\.o\.d\.?|payment|pement|pyment)(?![A-Za-z])\s*[.:=-]*\s*₹?\s*/gi, "COD ");
+  // Bina label ke sirf paisa: "₹1000=100=900" / "Rs. 1500" / "INR 1500" → COD maan lo
+  // (₹/Rs ke turant baad digit ho tabhi — "Rsingh" jaisa naam safe)
+  t = t.replace(/^[ \t]*(?:₹|rs\.?|inr)[ \t]*(?=[\d,])/gim, "COD ");
   // "1500=100=1400" → "1500-100=1400"   |   "1500-100-1400" → "1500-100=1400"
   t = t.replace(/(COD\s+[\d,]+)\s*=\s*([\d,]+)\s*=\s*([\d,]+)/gi, "$1-$2=$3");
   t = t.replace(/(COD\s+[\d,]+)\s*-\s*([\d,]+)\s*-\s*([\d,]+)/gi, "$1-$2=$3");
@@ -942,7 +945,14 @@ function regexParse(rawText) {
     }
     // "1 Chain 3 anguthi 1 kada" jaisi quantity+product lines — saare words digit/product ho aur kam se kam 1 product word ho
     if (out.length > 0) {
-      const toks = l.split(/[\s,+()\-]+/).filter(Boolean);
+      // "1pis Mangalsutra" / "2pcs Chain" / "1pc Bali" — number aur unit JUDE hue ho to alag karo.
+      // (ye sirf PEHCHAN ke liye hai — line ka asli text kabhi nahi badalta)
+      // "gm/g" JAAN-BOOJH KAR bahar hai — warna weight line (75g) product samajh li jati.
+      const splitGluedQty = (t) => {
+        const g = t.match(/^(\d{1,3})\s*((?:pcs|pc|pec|pics|pic|piece|pis|ps|pair|nag|ng|no|inch|jodi|set)\.?)$/i);
+        return g ? [g[1], g[2]] : [t];
+      };
+      const toks = l.split(/[\s,+()\-]+/).filter(Boolean).flatMap(splitGluedQty);
       const isProd = (t) => PRODUCT_TOKEN_RE.test(t);
       // (a) Poori line sirf product + number ho: "1 Chain 3 anguthi"
       if (toks.length && toks.some(isProd) && toks.every((t) => /^\d+$/.test(t) || isProd(t))) continue;
@@ -970,7 +980,7 @@ function regexParse(rawText) {
     }
     // Size / quantity lines: "Size 24", "24 size", "22 no", "Ring size 26", "Size 24 26", "Size......"
     if (out.length > 0 && /^(?:size|saze)\s*[:.\-]*\s*[\d,.\s]*$/i.test(l)) continue;
-    if (out.length > 0 && /^\d{1,3}(?:\.\d{1,2})?\s*(?:size|saze|no\.?|number|[il]nch|nag|pc|pcs|pec|piece)\.?$/i.test(l)) continue;
+    if (out.length > 0 && /^\d{1,3}(?:\.\d{1,2})?\s*(?:size|saze|no\.?|number|[il]nch|nag|ng|pcs|pc|pec|pics|pic|piece|pis|ps|pair|jodi)\.?$/i.test(l)) continue;
     if (out.length > 0 && /^(?:\d+\s*)?(?:ring|chain|anguthi|bali)\s*(?:size|saze)\s*[\d,\s]*$/i.test(l)) continue;
     if (out.length > 0 && /^gm\.?$/i.test(l)) continue; // akela "Gm" bina number ke
 
@@ -1109,12 +1119,46 @@ function regexParse(rawText) {
         const prefix = labelM ? labelM[1] : "";
         const body = l.slice(prefix.length);
         const parts = body.split(/\s*[,\/]\s*/).filter((x) => x.trim());
+        // Devanagari hissa pehle Hinglish banao — warna "इंदौर, इंदौर, इंदौर" ki key
+        // KHALI ban jati thi aur ek bhi duplicate nahi hatta tha.
+        const normP = (x) => devToHinglish(x.trim()).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const hasDev = /[ऀ-ॿ]/.test(body);
+        // LABEL-shabd: "मु, पो, गुलगांव" me "पो" ke baad wala naam POST OFFICE ka hai —
+        // aapka niyam: post/jila LIKHA ho to wo naam kabhi nahi hatega, chahe upar aa chuka ho.
+        const LABEL_ONLY = /^(?:mu|mukam|muqam|po|post|vpo|vill|village|gram|ganv|gaon|teh|tehsil|tahsil|taluka|dist|distt|district|jila|jilla|city|ps|via|vaya|near|opp|state)$/;
+        const isLabelPart = (x) => {
+          const n = normP(x);
+          return !!n && n.split(" ").every((w) => LABEL_ONLY.test(w));
+        };
         const seenP = new Set();
-        const uniq = parts.filter((x) => {
-          const k = x.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+        const seenTok = new Set(); // ab tak aaye saare shabd
+        const uniq = parts.filter((x, pi) => {
+          const k = normP(x);
           if (!k) return true;
-          if (seenP.has(k)) return false;
-          seenP.add(k);
+          // Pichla hissa sirf label ho ("...मु, पो, गुलगांव") → ye naam LABELLED hai, mat hatao
+          if (pi > 0 && isLabelPart(parts[pi - 1])) {
+            k.split(" ").filter(Boolean).forEach((w) => seenTok.add(w));
+            return true;
+          }
+          const flat = k.replace(/\s+/g, "");
+          if (seenP.has(flat)) return false; // bilkul wahi part dobara
+          const tk = k.split(" ").filter(Boolean);
+          // Mixed-script app-tail: "...जिला जालौर राजस्थान, Jalor, Rajasthan"
+          // AKELE shabd wala part jo pehle aa chuke shabd ka hi dusra spelling ho → hatao.
+          // (sirf Devanagari-wali line pe, kyunki ek hi script me upar wala exact match kaafi hai)
+          // Hindi→English spelling ka fark lagbhag poora SWAR (vowel) ka hota hai —
+          // "जालौर" = Jalaur/Jalor, "सांचौर" = Sanchaur/Sanchore — isliye vyanjan (consonant)
+          // ka dhaancha milao. Isse "Barmer vs Balotra" jaise ALAG naam kabhi nahi milenge.
+          // (edit-distance JAAN-BOOJH KAR nahi — "Jaipur vs Jaitpur" ek-akshar door hai
+          //  par ALAG jagah hai; vyanjan ka dhaancha ise sahi-sahi alag rakhta hai)
+          const skel = (t) => t.replace(/[aeiou]/g, "").replace(/w/g, "v");
+          const sameWord = (t) =>
+            t === tk[0] ||
+            (t.length >= 5 && tk[0].length >= 5 &&
+              skel(t).length >= 3 && skel(t) === skel(tk[0]));
+          if (hasDev && tk.length === 1 && tk[0].length >= 5 && [...seenTok].some(sameWord)) return false;
+          seenP.add(flat);
+          tk.forEach((t) => seenTok.add(t));
           return true;
         });
         if (uniq.length !== parts.length) l = (prefix + uniq.join(", ")).trim();
@@ -1380,7 +1424,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v8.7 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v8.8 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1562,7 +1606,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v8.7 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v8.8 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1571,7 +1615,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v8.7 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v8.8 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
