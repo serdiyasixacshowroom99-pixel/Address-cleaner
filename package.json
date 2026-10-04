@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "9.1.0",
-  "description": "Serdiya Address Bot v9.1 MASTER - address fit to 100 chars by India Post Speed Post priority (India/State/District/Tehsil go first, landmark last)",
+  "version": "9.3.0",
+  "description": "Serdiya Address Bot v9.3 MASTER - ADMIN_IDS gate: only admin messages are read and saved",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

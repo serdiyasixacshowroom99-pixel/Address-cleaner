@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v9.1 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v9.3 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -20,6 +20,21 @@ const SHEET_TAB = process.env.SHEET_TAB || "Sheet1";
 const GOOGLE_SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
 const GOOGLE_PRIVATE_KEY = (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 const MONGO_URI = process.env.MONGO_URI || ""; // SerdiyaMarginDB (learning ke liye)
+
+// 🔒 ADMIN — SIRF in logo ke message padhe jayenge, baaki sabko ANDEKHA kar diya jayega.
+//    Render me ADMIN_IDS set karo, comma se alag: "123456789,987654321"
+//    Apna ID jaanne ke liye bot ko /id bhejo.
+//    KHALI chhoda to purana wala behaviour — sabke message chalenge.
+const ADMIN_IDS = (process.env.ADMIN_IDS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function isAdmin(ctx) {
+  if (ADMIN_IDS.length === 0) return true; // ADMIN_IDS set hi nahi — sabko chalne do
+  const id = String(ctx.from?.id || "");
+  return ADMIN_IDS.includes(id);
+}
 
 const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 300000 }); // 5 min (AI chain ke liye)
 
@@ -498,6 +513,19 @@ const PRODUCT_LINE_RE = new RegExp(
 );
 // Sirf ASLI product words (qty/unit words alag hai)
 const PRODUCT_ONLY_RE = new RegExp(`^(?:${PRODUCT_WORDS_SRC})\\.?$`, "i");
+
+// KAMZOR product-shabd: ye PATE me bhi aate hai, isliye in par line nahi hatai jaati
+//   "Netarhat Awasiya Vidyalay 5th SET"   → asli pata (set = kamzor)
+//   "Hanuman Sagar Bhart MALA Rajvada"    → asli pata (mala = kamzor)
+//   "Lamkhede MALA", "Sundar SEN Colony"  → asli naam
+// PAKKE shabd (chain, jhumar, mangalsutra, anguthi...) pate me kabhi nahi aate,
+// isliye wo line me kahi bhi dikhe to line product hai.
+// Inme wo naam bhi hai jo ASLI JAGAH ke hai:
+//   Bali (tehsil, Pali), Payal (shahar, Punjab), Kada (Kaushambi), Kanthi (W.B.),
+//   Sikri (Fatehpur Sikri), Challa, Baras — in par line kabhi nahi hategi.
+const WEAK_PRODUCT_RE =
+  /^(?:set|combo|kombo|jodi|full|long|lung|lunag|loung|rani|sen|biti|iug|adda|aad|plate|plet|mala|har|baju|phool|phul|fool|ful|panel|finger|item|items|maal|mal|chokhar|china|chaina|bali|bhali|vali|kada|kade|sikri|challa|chhalla|baras)\.?$/i;
+const isStrongProduct = (t) => PRODUCT_ONLY_RE.test(t) && !WEAK_PRODUCT_RE.test(t);
 // Qty/unit words — ye AKELE product nahi hai ("SURVEY NO. 70" me "NO." product nahi)
 const QTY_TOKEN_RE = /^(?:pc|pcs|pec|pics?|piece|pis|ps|pair|size|saze|no|nag|ng|gm|inch)\.?$/i;
 const PRODUCT_TOKEN_RE = new RegExp(
@@ -944,7 +972,13 @@ function regexParse(rawText) {
       if (lv && PRODUCT_TOKEN_RE.test(lv[1].trim())) continue;
     }
     // "1 Chain 3 anguthi 1 kada" jaisi quantity+product lines — saare words digit/product ho aur kam se kam 1 product word ho
-    if (out.length > 0) {
+    // 🛡️ LABEL wali line (PO / Vill / Teh / Dist / Ward / Plot...) ASLI PATA hai —
+    //    use product samajh kar kabhi mat hatao. "Tashil: Bali", "Dist Kanthi",
+    //    "Vill Kada", "Teh Payal" — ye sab jagah ke naam hai, gehna nahi.
+    //    (Reseller galti se "Village: Jumki" likhe — wo upar wala alag niyam pakadta hai)
+    const ADDR_LABEL_RE =
+      /^(?:po|vpo|v\.?\s*p\.?\s*o|post|post\s*office|vill|village|gram|gav|gaon|ganv|mu|mukam|teh|tehsil|tahsil|tashil|taluka|taluk|dist|distt|district|jila|jilla|zila|city|via|vaya|ward|plot|house|h\.?\s*no|flat|shop|room|sector|near|opp|opposite|behind)\b[\s:.\-–—]/i;
+    if (out.length > 0 && !ADDR_LABEL_RE.test(l)) {
       // "1pis Mangalsutra" / "2pcs Chain" / "1pc Bali" — number aur unit JUDE hue ho to alag karo.
       // (ye sirf PEHCHAN ke liye hai — line ka asli text kabhi nahi badalta)
       // "gm/g" JAAN-BOOJH KAR bahar hai — warna weight line (75g) product samajh li jati.
@@ -971,10 +1005,24 @@ function regexParse(rawText) {
       // Devta/brand ka naam + product ("Balaji Plate", "Hanuman Locket") — ye product line hai.
       // ("Balaji Mandir", "Shyam Nagar" me address-shabd hai isliye wo pehle hi safe hai)
       const DEITY = /^(balaji|hanuman|ramdev|ramdevji|shyam|khatu|krishna|ganesh|shiv|shiva|radha|sai|tirupati|bhomiya|nakoda|salasar|mata|maa|devi|baba|shree|shri|sri|ad|a\.d|gold|golden|silver|german|oxidised|oxidized|brass|copper|cz|kundan|meena|antique|forming|victorian|matt|matte|plated|fancy|premium|heavy|light|rose|rosegold)$/i;
+      // "Balaji Locate 2 Pc" / "Hanuman Ji Pendal" jaisi line = devta/brand + product + qty.
+      // Aisi line me HAR shabd ya to devta/brand ho, ya product, ya ginti —
+      // tabhi wo product line hai.
+      //
+      // ⚠️ PEHLE sirf itna tha ki "koi bhi product shabd baad me aa jaye" to line udd jati thi.
+      //    Usse "Netarhat Awasiya Vidyalay 5th Set" jaisa ASLI PATA kat gaya tha
+      //    (sirf "Set" ki wajah se). Ab baaki shabd bhi dekhe jate hai.
+      const harmless = (t) =>
+        isRealProd(t) || QTY_TOKEN_RE.test(t) || DEITY.test(t) ||
+        /^(?:ji|wala|wali|ka|ki|ke|aur|and|\+|&)$/i.test(t) ||
+        /^\d+(?:st|nd|rd|th)?$/i.test(t);
       const startsProduct =
         isRealProd(toks[0]) ||
-        (toks.length >= 3 && toks.slice(1).some(isRealProd)) ||
-        (toks.length === 2 && DEITY.test(toks[0]) && isRealProd(toks[1]));
+        // PAKKA product shabd kahi bhi (chain, jhumar, anguthi...) → line product hai
+        (toks.length >= 2 && toks.slice(1).some(isStrongProduct)) ||
+        // KAMZOR shabd (set, mala, har...) → tabhi product jab BAAKI sab shabd bhi
+        // devta/brand/ginti ho. Warna "Netarhat Awasiya Vidyalay 5th Set" bach jaye.
+        (toks.length >= 2 && toks.some(isRealProd) && toks.every(harmless));
       const mostlyProduct = toks.length > 0 && (prodCount / toks.length > 0.5 || startsProduct);
       if (mostlyProduct && !looksLikeAddress && toks.length <= 5) continue;
     }
@@ -1255,7 +1303,7 @@ const PIN_STATE = {
 };
 
 // ============================================================
-//  ADDRESS FITTER (v9.1) — booking ke time lamba address KAT jata hai,
+//  ADDRESS FITTER (v9.3) — booking ke time lamba address KAT jata hai,
 //  isliye ASLI address (naam / phone / pincode / COD / weight ko CHHOD kar)
 //  ko 100 character ke andar laate hai.
 //
@@ -1606,7 +1654,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v9.1 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v9.3 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1635,7 +1683,18 @@ async function processQueue() {
   working = false;
 }
 
+// Apna Telegram ID jaanne ke liye — ye SABKE liye chalta hai, taaki aap kisi ko
+// /id bhejne ko bol kar uska ID lekar ADMIN_IDS me jod sako.
+bot.command("id", (ctx) =>
+  ctx.reply(
+    `🆔 Aapka Telegram ID: ${ctx.from.id}\n` +
+      (isAdmin(ctx) ? "✅ Aap ADMIN ho — aapke address Sheet me jayenge." :
+        "🚫 Aap admin nahi ho — aapke message Sheet me NAHI jate.")
+  )
+);
+
 bot.on("text", (ctx) => {
+  if (!isAdmin(ctx)) return skipNonAdmin(ctx);
   const raw = ctx.message.text || "";
   if (raw.startsWith("/")) return; // commands ko chhodo
   if (!/\d/.test(raw) || raw.trim().split("\n").length < 2) return; // bakwas message skip
@@ -1644,6 +1703,7 @@ bot.on("text", (ctx) => {
 });
 
 bot.on("photo", (ctx) => {
+  if (!isAdmin(ctx)) return skipNonAdmin(ctx);
   const photos = ctx.message.photo;
   queue.push({ ctx, raw: null, photo: photos[photos.length - 1].file_id });
   processQueue();
@@ -1651,11 +1711,20 @@ bot.on("photo", (ctx) => {
 
 // Apna bheja message EDIT kiya → naya version dobara Sheet me
 bot.on("edited_message", (ctx) => {
+  if (!isAdmin(ctx)) return skipNonAdmin(ctx);
   const raw = ctx.editedMessage?.text;
   if (!raw || raw.startsWith("/")) return;
   queue.push({ ctx, raw, isEdit: true });
   processQueue();
 });
+
+// Admin ke alawa koi bhi — message BILKUL nahi padha jata, Sheet me kuch nahi jata.
+// Sirf Render ke log me dikh jata hai ki kisne bheja tha.
+function skipNonAdmin(ctx) {
+  const u = ctx.from || {};
+  const naam = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || "?";
+  console.log(`🚫 Admin nahi — andekha kiya: ${naam} (ID: ${u.id})`);
+}
 
 // ============================================================
 //  MAIN — ek address ko poora process karke Sheet me daalo
@@ -1754,7 +1823,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
     if (la.applied.length) cleaned = la.text;
   }
 
-  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.1) ----------
+  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.3) ----------
   // Booking ke time lamba address KAT jata hai. Naam / phone / pincode / COD / weight
   // ko haath nahi lagta — sirf beech ka ASLI address chhota hota hai, aur wo bhi
   // TABHI jab 100 se bada ho. (validate() upar hi ho chuka hai — poore address par.)
@@ -1802,7 +1871,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v9.1 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v9.3 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1811,7 +1880,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v9.1 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v9.3 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
