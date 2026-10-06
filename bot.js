@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v9.3 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v9.4 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -1028,6 +1028,11 @@ function regexParse(rawText) {
     }
     // Size / quantity lines: "Size 24", "24 size", "22 no", "Ring size 26", "Size 24 26", "Size......"
     if (out.length > 0 && /^(?:size|saze)\s*[:.\-]*\s*[\d,.\s]*$/i.test(l)) continue;
+    // "Size (dono hath ka pic bheja hai)" / "Ring size - baad me bataunga" —
+    // size ke saath reseller ka NOTE. Line "size" se shuru ho, usme koi
+    // address-shabd / pincode / phone na ho → poori line HATAO.
+    if (out.length > 0 && /^(?:ring\s*|chain\s*|anguthi\s*|bali\s*)?(?:size|saze)\b/i.test(l) &&
+        !ADDRESS_HINT_RE.test(l) && !/\d{6}/.test(l) && !/[6-9]\d{9}/.test(l)) continue;
     if (out.length > 0 && /^\d{1,3}(?:\.\d{1,2})?\s*(?:size|saze|no\.?|number|[il]nch|nag|ng|pcs|pc|pec|pics|pic|piece|pis|ps|pair|jodi)\.?$/i.test(l)) continue;
     if (out.length > 0 && /^(?:\d+\s*)?(?:ring|chain|anguthi|bali)\s*(?:size|saze)\s*[\d,\s]*$/i.test(l)) continue;
     if (out.length > 0 && /^gm\.?$/i.test(l)) continue; // akela "Gm" bina number ke
@@ -1303,7 +1308,7 @@ const PIN_STATE = {
 };
 
 // ============================================================
-//  ADDRESS FITTER (v9.3) — booking ke time lamba address KAT jata hai,
+//  ADDRESS FITTER (v9.4) — booking ke time lamba address KAT jata hai,
 //  isliye ASLI address (naam / phone / pincode / COD / weight ko CHHOD kar)
 //  ko 100 character ke andar laate hai.
 //
@@ -1654,7 +1659,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v9.3 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v9.4 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1823,7 +1828,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
     if (la.applied.length) cleaned = la.text;
   }
 
-  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.3) ----------
+  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.4) ----------
   // Booking ke time lamba address KAT jata hai. Naam / phone / pincode / COD / weight
   // ko haath nahi lagta — sirf beech ka ASLI address chhota hota hai, aur wo bhi
   // TABHI jab 100 se bada ho. (validate() upar hi ho chuka hai — poore address par.)
@@ -1871,7 +1876,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v9.3 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v9.4 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1880,7 +1885,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v9.3 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v9.4 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

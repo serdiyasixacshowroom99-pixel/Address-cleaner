@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "9.3.0",
-  "description": "Serdiya Address Bot v9.3 MASTER - ADMIN_IDS gate: only admin messages are read and saved",
+  "version": "9.4.0",
+  "description": "Serdiya Address Bot v9.4 MASTER - size-note lines removed (so real landmarks are not cut to fit 100 chars)",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
