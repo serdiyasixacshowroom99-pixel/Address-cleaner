@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v9.4 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v9.6 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -472,7 +472,7 @@ const PRODUCT_WORDS_SRC =
   // Payal
   "payal|pajeb|payjeb|panjeb|" +
   // Mangalsutra
-  "mangalsutra|mangalsutr\\w*|manglsutar\\w*|mglsutar\\w*|mangal|mangl|" +
+  "mangalsutra|mangalsutr\\w*|sutra|sutar|sutr|manglsutar\\w*|mglsutar\\w*|mangal|mangl|" +
   "plate|plet|tabij|taweez|tabiz|kavach|kawach|" +
   // Set / combo
   "set|combo|kombo|jodi|" +
@@ -505,7 +505,7 @@ const PRODUCT_WORDS_SRC =
 const PRODUCT_DEV_RE = /^(?:\d+\s*)?(?:कड़ा|कडा|कड़े|चेन|चैन|चेइन|अंगूठी|अंगुठी|अँगूठी|बाली|बालि|लॉकेट|लोकेट|माला|हार|पायल|पाजेब|झुमका|झुमकी|झुमर|कंगन|चूड़ी|चुड़ी|ब्रेसलेट|ब्रासलेट|मंगलसूत्र|मंगलसुत्र|रखडी|राखड़ी|राखी|गलचेन|गलाचेन|गोखरू|गोखरु|नथनी|नथ|टागडी|तगड़ी|कमरबंद|बाजूबंद|मांगटीका|कोंबो|कोम्बो|सेट|फुल|फूल|जोड़ी|जोडी|मुरका|कंठी|पेंडल|पेंडेंट)(?:\s|$|[+,\d])/;
 
 // Asli address ke sanket — inme se koi shabd ho to line KABHI product nahi mani jayegi
-const ADDRESS_HINT_RE = /\b(road|rd|marg|nagar|nagri|colony|street|gali|chowk|chauraha|circle|bazar|bazaar|market|mandi|mohalla|pura|puram|wadi|vihar|park|complex|society|apartment|tower|plaza|building|niwas|nivas|bhawan|bhavan|sadan|villa|house|makan|plot|flat|room|shop|ward|sector|block|phase|line|near|opp|opposite|behind|samne|pass|paas|village|vill|gaon|gram|post|po|dist|district|jila|tehsil|tahsil|teh|taluka|taluk|city|state|station|school|college|hospital|clinic|medical|temple|mandir|masjid|church|gurudwara|bank|atm|petrol|pump|hotel|dhaba|restaurant|garden|chakki|store|stor|agency|office|factory|godown|godam|farm|dairy|tanki|talab|nadi|pul|bridge|highway|nh|sh|bypass|main|new|old|purana|naya|auto|mobile|motor|cycle|tyre|hardware|electric|electronics|furniture|marble|granite|cement|steel|iron|glass|paint|tiles|sanitary|kirana|karyana|general|provision|super|mart|super\s*market|sweet|mishthan|bhandar|namkeen|bakery|cafe|tea|chai|juice|dairy|milk|gas|cylinder|salon|parlour|parlor|beauty|cloth|garment|readymade|fashion|footwear|shoe|jewell?er|opticals?|computer|mobil|photo|studio|press|xerox|stationery|book|toy|gift|sports|hard\s*ware|traders?|trading|enterprises?|industries|udyog|company|pvt|ltd|centre|center|point|palace|residency|heights|enclave|estate|corner|junction|crossing|naka|phatak|tiraha|mata|devi|maharaj|baba|swami|guru|shri|shree|sri|sant|dev)\b/i;
+const ADDRESS_HINT_RE = /\b(road|rd|marg|nagar|nagri|colony|street|gali|chowk|chauraha|circle|bazar|bazaar|market|mandi|mohalla|pura|puram|wadi|vihar|park|complex|society|apartment|tower|plaza|building|niwas|nivas|bhawan|bhavan|sadan|villa|house|makan|plot|flat|room|shop|ward|sector|block|phase|line|near|opp|opposite|behind|samne|pass|paas|village|vill|gaon|gram|post|po|dist|district|jila|tehsil|tahsil|teh|taluka|taluk|city|state|station|stand|bus|depot|school|college|vidyalay\w*|shala|hospital|clinic|medical|temple|mandir|masjid|church|gurudwara|bank|atm|petrol|pump|hotel|dhaba|restaurant|garden|chakki|store|stor|agency|office|factory|godown|godam|farm|dairy|tanki|talab|nadi|pul|bridge|highway|nh|sh|bypass|main|new|old|purana|naya|auto|mobile|motor|cycle|tyre|hardware|electric|electronics|furniture|marble|granite|cement|steel|iron|glass|paint|tiles|sanitary|kirana|karyana|general|provision|super|mart|super\s*market|sweet|mishthan|bhandar|namkeen|bakery|cafe|tea|chai|juice|dairy|milk|gas|cylinder|salon|parlour|parlor|beauty|cloth|garment|readymade|fashion|footwear|shoe|jewell?er|opticals?|computer|mobil|photo|studio|press|xerox|stationery|book|toy|gift|sports|hard\s*ware|traders?|trading|enterprises?|industries|udyog|company|pvt|ltd|centre|center|point|palace|residency|heights|enclave|estate|corner|junction|crossing|naka|phatak|tiraha|mata|devi|maharaj|baba|swami|guru|shri|shree|sri|sant|dev)\b/i;
 
 const PRODUCT_LINE_RE = new RegExp(
   `^(?:${PRODUCT_WORDS_SRC})\\b(?!\\s+(?:road|marg|nagar|chowk|chauraha|gali|colony|street|bazar|bazaar|market|mohalla|pura|puram|wadi|park|vihar|complex|mandi|gaon|gram|niwas|bhawan|sadan|villa|house|society|apartment))`,
@@ -524,8 +524,16 @@ const PRODUCT_ONLY_RE = new RegExp(`^(?:${PRODUCT_WORDS_SRC})\\.?$`, "i");
 //   Bali (tehsil, Pali), Payal (shahar, Punjab), Kada (Kaushambi), Kanthi (W.B.),
 //   Sikri (Fatehpur Sikri), Challa, Baras — in par line kabhi nahi hategi.
 const WEAK_PRODUCT_RE =
-  /^(?:set|combo|kombo|jodi|full|long|lung|lunag|loung|rani|sen|biti|iug|adda|aad|plate|plet|mala|har|baju|phool|phul|fool|ful|panel|finger|item|items|maal|mal|chokhar|china|chaina|bali|bhali|vali|kada|kade|sikri|challa|chhalla|baras)\.?$/i;
+  /^(?:set|combo|kombo|jodi|full|long|lung|lunag|loung|rani|sen|biti|iug|adda|aad|plate|plet|mala|har|baju|phool|phul|fool|ful|panel|finger|item|items|maal|mal|chokhar|china|chaina|bali|bhali|vali|kada|kade|sikri|challa|chhalla|baras|kanti|kanthi|mangal|mangl|rakhi|rakhri|rakhdi|murki|murka|chan|chin|chen|payal|nathani)\.?$/i;
 const isStrongProduct = (t) => PRODUCT_ONLY_RE.test(t) && !WEAK_PRODUCT_RE.test(t);
+
+// Bharatiya gaon/shahar ke naam ke PICHHLE hisse. "Kanti KHERI", "Payal VIHAR",
+// "Mangal PURA" — ye JAGAH hai, gehna nahi. Isi se "Rani Hot" / "Mangal Sutra"
+// (asli product) alag pehchane jate hai.
+const PLACE_SUFFIX_RE =
+  /(?:pur|pura|puri|kheri|khera|garh|gadh|wadi|vadi|wada|vada|vas|was|sar|gaon|ganv|abad|nagar|nagri|palli|halli|patti|tola|tanda|bagh|khurd|kalan|dhani|bera|vihar|ser|nada|wala|wali)$/i;
+const looksLikePlace = (s) =>
+  s.split(/[\s,]+/).some((w) => w.length >= 4 && PLACE_SUFFIX_RE.test(w));
 // Qty/unit words — ye AKELE product nahi hai ("SURVEY NO. 70" me "NO." product nahi)
 const QTY_TOKEN_RE = /^(?:pc|pcs|pec|pics?|piece|pis|ps|pair|size|saze|no|nag|ng|gm|inch)\.?$/i;
 const PRODUCT_TOKEN_RE = new RegExp(
@@ -961,7 +969,16 @@ function regexParse(rawText) {
     if (/^(from|form|forum|frm|fram|frome|froam|farom)\b\s*[.:\-]?\s*\S/i.test(l)) continue; // From X / Form.Dharmi / Forum khetaram / FROM - X
     if (/^[👤📦🚚💰]|शिपिंग|\bORD\s*#|\(ID:\s*\d+\)/iu.test(l)) continue;     // Margin bot footer
     // Product lines — lekin PEHLI line (customer ka naam: "Bali Ram", "Rakhi Devi") kabhi nahi hategi
-    if (out.length > 0 && PRODUCT_LINE_RE.test(l) && !ADDRESS_HINT_RE.test(l)) continue;
+    // Line PAKKE product shabd se shuru ho tabhi hatao. KAMZOR shabd se shuru hone wali
+    // line ("Kanti Kheri", "Mangal Kheri", "Payal Vihar") ASLI JAGAH ka naam hai —
+    // use neeche wala toks-wala niyam dekhta hai.
+    {
+      const w1 = (l.split(/[\s,.:]+/)[0] || "").replace(/[^\p{L}\p{N}]/gu, "");
+      // PAKKE product se shuru → hatao. KAMZOR se shuru → tabhi hatao jab line
+      // JAGAH jaisi na lage ("Rani Hot" hatega, "Kanti Kheri" bachega).
+      if (out.length > 0 && PRODUCT_LINE_RE.test(l) && !ADDRESS_HINT_RE.test(l) &&
+          (isStrongProduct(w1) || !looksLikePlace(l))) continue;
+    }
     if (out.length > 0 && PRODUCT_DEV_RE.test(l)) continue; // कड़ा / चेन / अंगूठी jaisi Devanagari product line
     // "Sohankanthi+Tevti+Galachen" jaisi + wali combo line — koi bhi hissa product ho to poori line product hai
     if (out.length > 0 && /\+/.test(l) && l.split("+").length >= 2 &&
@@ -1015,9 +1032,20 @@ function regexParse(rawText) {
       const harmless = (t) =>
         isRealProd(t) || QTY_TOKEN_RE.test(t) || DEITY.test(t) ||
         /^(?:ji|wala|wali|ka|ki|ke|aur|and|\+|&)$/i.test(t) ||
-        /^\d+(?:st|nd|rd|th)?$/i.test(t);
+        /^\d+(?:st|nd|rd|th)?$/i.test(t) || /^\d+g$/i.test(t); // "Adda 110g" ka weight
+      // Do PAAS-PAAS ke shabd JOD kar product ban jaye → wo product line hai.
+      //   "Sohan Kanthi" → sohankanthi | "Mangal Sutra" → mangalsutra
+      //   "Gala Chen" → galachen       | "Nose Pin" → nosepin
+      // ("Kanti Kheri" → kantikheri — vocabulary me nahi, isliye JAGAH hi rahegi)
+      const joinedProduct = toks.some(
+        (t, i) => i + 1 < toks.length && isStrongProduct(t + toks[i + 1])
+      );
       const startsProduct =
-        isRealProd(toks[0]) ||
+        joinedProduct ||
+        // PAKKE product se shuru ("Chain Balaji locket")
+        isStrongProduct(toks[0]) ||
+        // AKELA product shabd ("Chain", "Adda", "Set")
+        (toks.length === 1 && isRealProd(toks[0])) ||
         // PAKKA product shabd kahi bhi (chain, jhumar, anguthi...) → line product hai
         (toks.length >= 2 && toks.slice(1).some(isStrongProduct)) ||
         // KAMZOR shabd (set, mala, har...) → tabhi product jab BAAKI sab shabd bhi
@@ -1075,7 +1103,7 @@ function regexParse(rawText) {
     }
 
     // --- "ADDRESS:" jaisa prefix hatao (baaki labels PO:/Post:/Dist:/CITY: rakho) ---
-    l = l.replace(/^address\s*[:\-–—]\s*/i, "");
+    l = l.replace(/^(?:address|adress|addres|add)\s*[;:\-–—]\s*/i, "");
 
     // --- "Naam / Name / नाम / नेम" label naam ki line se hatao ("Naam khuman Singh" → "khuman Singh") ---
     l = l.replace(/^(naam|name|नाम|नेम)\s*[.:\-–—]?\s+(?=\S)/i, "");
@@ -1308,7 +1336,7 @@ const PIN_STATE = {
 };
 
 // ============================================================
-//  ADDRESS FITTER (v9.4) — booking ke time lamba address KAT jata hai,
+//  ADDRESS FITTER (v9.6) — booking ke time lamba address KAT jata hai,
 //  isliye ASLI address (naam / phone / pincode / COD / weight ko CHHOD kar)
 //  ko 100 character ke andar laate hai.
 //
@@ -1410,10 +1438,15 @@ function fitAddress(text, limit = ADDR_LIMIT) {
     const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const parts = []; // {li, pi, txt}
     A.forEach((l, li) => l.split(/\s*,\s*/).forEach((p, pi) => parts.push({ li, pi, txt: p.trim() })));
+    // "PO, Jodhpur" — pichla hissa sirf LABEL ho to aage wala naam USI label ka hai,
+    // wo kabhi nahi hatega (chahe wo naam kahi aur bhi likha ho).
+    const LAB_ONLY = /^(?:PO|VPO|Vill|Teh|Dist|Gav|Gaon|Ganv|Gram|Jila|Mu|Via|Post|Village|District|Tehsil)\.?$/i;
     const kill = new Set();
     for (const p of parts) {
       const n = norm(p.txt);
       if (!n || n.length < 4 || LAB.test(p.txt)) continue; // label wala kabhi nahi
+      const prev = parts.find((q) => q.li === p.li && q.pi === p.pi - 1);
+      if (prev && LAB_ONLY.test(prev.txt.trim())) continue; // label ke turant baad ka naam
       const inside = parts.some(
         (q) => q !== p && !kill.has(q) && norm(q.txt) !== n &&
                new RegExp("(^| )" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "( |$)").test(norm(q.txt))
@@ -1425,6 +1458,25 @@ function fitAddress(text, limit = ADDR_LIMIT) {
         l.split(/\s*,\s*/).filter((_, pi) => ![...kill].some((k) => k.li === li && k.pi === pi)).join(", ")
       ));
     }
+  }
+  if (done()) return rebuild(head, A, tail);
+
+  // ---- 2c. Bracket me wahi naam jo pehle se likha hai (kuch nahi khota) ----
+  //      "...Navjoti Manovikas School ( Jodhpur)" + upar "PO, Jodhpur" → bracket hatao.
+  //      "PO/Vill Khapri (Mungapur)" me Mungapur kahi aur nahi hai → wo RAHEGA.
+  {
+    const flat = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const next = A.map((l) =>
+      l.replace(/\s*\(\s*([^()]{3,30}?)\s*\)/g, (m, inner) => {
+        const n = flat(inner);
+        if (!n) return m;
+        const baaki = flat(A.join(" ").replace(m, " "));
+        return new RegExp("(^| )" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "( |$)").test(baaki)
+          ? "" : m;
+      })
+    );
+    const t2 = tidy(next);
+    if (t2.length) A = t2;
   }
   if (done()) return rebuild(head, A, tail);
 
@@ -1464,7 +1516,11 @@ function fitAddress(text, limit = ADDR_LIMIT) {
     // 🛡️ Jis hisse me koi NUMBER ho use KABHI mat hatao — "Opp Lifeline Hospital Plot No 1"
     //    me "Plot No 1" ASLI makan ka number ho sakta hai. Thoda lamba rehna chalega,
     //    par makan ka number kabhi nahi khona chahiye.
-    const isLM = (s) => LM.test(s.trim()) && !/\d/.test(s);
+    // 🛡️ LAMBA hissa sirf landmark nahi hota — usme aage aur bhi ASLI pata hota hai.
+    //    "Nr Vasundhara Hosp K Sath Navjoti Manovikas School (Jodhpur)" me
+    //    school aur sheher dono hai. Aise hisse ko poora mat hatao —
+    //    address thoda lamba reh jaye wo chalega, par jagah ka naam nahi khona chahiye.
+    const isLM = (s) => LM.test(s.trim()) && !/\d/.test(s) && s.trim().length <= 35;
 
     // Ek-ek karke hatao, aur jaise hi 100 ke andar aaya WAHI RUK JAO
     for (const drop of [isIndia, isState, isDist, isTeh, isLM]) {
@@ -1477,8 +1533,14 @@ function fitAddress(text, limit = ADDR_LIMIT) {
       }));
       if (next.length) A = next;
       if (done()) break;
-      // (b) PHIR poori line (jo puri ki puri wahi cheez ho)
-      const keep = A.filter((s) => !drop(s));
+      // (b) PHIR poori line — ya to line khud wahi cheez ho, ya uske SAARE
+      //     hisse wahi cheez ho ("Nr CS Girls Hostel, Nr J & T Gems" — dono landmark)
+      const dropLine = (s) => {
+        if (drop(s)) return true;
+        const ps = s.split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean);
+        return ps.length > 1 && ps.every(drop);
+      };
+      const keep = A.filter((s) => !dropLine(s));
       if (keep.length) A = keep;                  // poora address wahi ho to mat hatao
     }
   }
@@ -1659,7 +1721,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v9.4 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v9.6 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1828,7 +1890,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
     if (la.applied.length) cleaned = la.text;
   }
 
-  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.4) ----------
+  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.6) ----------
   // Booking ke time lamba address KAT jata hai. Naam / phone / pincode / COD / weight
   // ko haath nahi lagta — sirf beech ka ASLI address chhota hota hai, aur wo bhi
   // TABHI jab 100 se bada ho. (validate() upar hi ho chuka hai — poore address par.)
@@ -1876,7 +1938,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v9.4 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v9.6 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1885,7 +1947,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v9.4 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v9.6 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

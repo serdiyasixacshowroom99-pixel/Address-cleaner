@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "9.4.0",
-  "description": "Serdiya Address Bot v9.4 MASTER - size-note lines removed (so real landmarks are not cut to fit 100 chars)",
+  "version": "9.6.0",
+  "description": "Serdiya Address Bot v9.6 MASTER - long landmark parts kept, name after label never dropped, duplicate bracket removed",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
