@@ -1,7 +1,7 @@
 {
   "name": "serdiya-address-bot",
-  "version": "9.6.0",
-  "description": "Serdiya Address Bot v9.6 MASTER - long landmark parts kept, name after label never dropped, duplicate bracket removed",
+  "version": "9.8.0",
+  "description": "Serdiya Address Bot v9.8 MASTER - removes ONE item at a time and stops the moment it fits (no more over-cutting)",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"

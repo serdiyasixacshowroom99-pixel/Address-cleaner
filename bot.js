@@ -1,5 +1,5 @@
 // ============================================================
-//  SERDIYA ADDRESS BOT v9.6 — MASTER (AUTO-SAVE)
+//  SERDIYA ADDRESS BOT v9.8 — MASTER (AUTO-SAVE)
 //  Flow: Address → Regex clean → (AI sirf mushkil pe) → Validate
 //        → India Post pincode check → SEEDHA Google Sheet
 //  Telegram jawab SIRF: PPD ya phone/pincode/COD missing
@@ -1336,7 +1336,7 @@ const PIN_STATE = {
 };
 
 // ============================================================
-//  ADDRESS FITTER (v9.6) — booking ke time lamba address KAT jata hai,
+//  ADDRESS FITTER (v9.8) — booking ke time lamba address KAT jata hai,
 //  isliye ASLI address (naam / phone / pincode / COD / weight ko CHHOD kar)
 //  ko 100 character ke andar laate hai.
 //
@@ -1377,9 +1377,11 @@ function fitAddress(text, limit = ADDR_LIMIT) {
   const { head, addr, tail } = splitParts(text);
   if (addr.length === 0 || addrLen(addr) <= limit) return text; // 82% yahi se wapas
   let A = addr.slice();
+  const fitState = {}; // seedhi ke baad wale kaam yahan rakhe jate hai
   const done = () => addrLen(A) <= limit;
   const tidy = (arr) =>
-    arr.map((s) => s.replace(/\s{2,}/g, " ").replace(/\s+,/g, ",")
+    arr.map((s) => s.replace(/\s{2,}/g, " ")
+                    .replace(/\s*,\s*/g, ", ")   // comma ke baad hamesha ek space
                     .replace(/^[\s,:\-–—]+|[\s,:\-–—]+$/g, "").trim())
        .filter(Boolean);
 
@@ -1480,17 +1482,6 @@ function fitAddress(text, limit = ADDR_LIMIT) {
   }
   if (done()) return rebuild(head, A, tail);
 
-  // ---- 3. Aam shabd chhote (kuch nahi khota) ----
-  const WORD = [
-    [/\broad\b/gi, "Rd"], [/\bnagar\b/gi, "Ngr"], [/\bcolony\b/gi, "Col"],
-    [/\bsociety\b/gi, "Soc"], [/\bbuilding\b/gi, "Bldg"], [/\bopposite\b/gi, "Opp"],
-    [/\bnear\b/gi, "Nr"], [/\bbehind\b/gi, "Beh"], [/\bmarket\b/gi, "Mkt"],
-    [/\bapartment\b/gi, "Apt"], [/\bhospital\b/gi, "Hosp"], [/\bstation\b/gi, "Stn"],
-    [/\bcross(?:ing)?\b/gi, "Crsg"], [/\bnumber\b/gi, "No"], [/\bfloor\b/gi, "Flr"],
-  ];
-  A = tidy(A.map((s) => { for (const [re, to] of WORD) s = s.replace(re, to); return s; }));
-  if (done()) return rebuild(head, A, tail);
-
   // ---- 4. BHARATIYA DAK ki zarurat ke hisaab se hatao ----
   //
   //  Speed Post ka asli safar:
@@ -1522,27 +1513,112 @@ function fitAddress(text, limit = ADDR_LIMIT) {
     //    address thoda lamba reh jaye wo chalega, par jagah ka naam nahi khona chahiye.
     const isLM = (s) => LM.test(s.trim()) && !/\d/.test(s) && s.trim().length <= 35;
 
-    // Ek-ek karke hatao, aur jaise hi 100 ke andar aaya WAHI RUK JAO
-    for (const drop of [isIndia, isState, isDist, isTeh, isLM]) {
-      if (done()) break;
-      // (a) PEHLE sirf comma wala HISSA ("Opp Prajapati Soc, Vimal Parinda" me se
-      //     sirf "Opp Prajapati Soc" jaye — "Vimal Parinda" ASLI jagah ka naam hai)
-      const next = tidy(A.map((s) => {
-        const p = s.split(/\s*,\s*/).filter((x) => !drop(x));
-        return p.length ? p.join(", ") : s;        // poori line khali mat karo
-      }));
-      if (next.length) A = next;
-      if (done()) break;
-      // (b) PHIR poori line — ya to line khud wahi cheez ho, ya uske SAARE
-      //     hisse wahi cheez ho ("Nr CS Girls Hostel, Nr J & T Gems" — dono landmark)
+    // ZARURI: pehle sirf "Dist"/"Teh" ka LABEL hatao, SHEHER ka naam RAKHO.
+    // "Dist Ahmedabad" → "Ahmedabad" (5 akshar bache, naam bach gaya).
+    // Naam tabhi jayega jab iske baad bhi jagah kam pade.
+    // Isi se address 95-100 ke beech aata hai, 87 par girta nahi.
+    const wasDist = new Set(), wasTeh = new Set();
+    if (!done()) {
+      A = A.map((s) => {
+        if (isDist(s)) { const n = s.replace(/^dist\.?\s*[:\-]?\s*/i, "").trim(); if (n) { wasDist.add(n); return n; } }
+        if (isTeh(s))  { const n = s.replace(/^teh\.?\s*[:\-]?\s*/i, "").trim();  if (n) { wasTeh.add(n);  return n; } }
+        return s;
+      });
+    }
+    const wasDistLine = (s) => wasDist.has(s.trim());
+    const wasTehLine = (s) => wasTeh.has(s.trim());
+
+    // Ek cheez hatane ka tarika — pehle comma wala HISSA, phir poori line
+    // lineOnly = sirf POORI LINE dekho, line ke andar ke hisse nahi.
+    // District/Tehsil ke liye ZARURI hai: "Dist Jodhpur" ka label hat kar wo
+    // akela "Jodhpur" ban chuka hai — agar hisse bhi dekhe to "PO, Jodhpur"
+    // wala Jodhpur bhi kat jata, jo us PO ka naam hai.
+    // ⚠️ SABSE ZARURI NIYAM: EK BAAR ME SIRF EK CHEEZ HATTI HAI.
+    //    Har hatane ke baad dobara naapa jata hai, aur jaise hi 100 ke andar
+    //    aaya WAHI RUK JATA HAI. Pehle saare landmark ek saath ud jate the —
+    //    isi se 134 ka address 57 par gir gaya tha.
+    //    CHHOTA hissa pehle jata hai, taaki SABSE KAM akshar kate aur
+    //    address 100 ke jitna paas ho sake utna paas rahe.
+    const applyDrop = (drop, lineOnly) => {
+      // (a) PEHLE line ke andar ka comma wala HISSA — ek-ek karke
+      //     ("Nr Meera Chowk, Beh Govt Soc, Hotel Vinayak Palace" me se
+      //      sirf "Nr Meera Chowk" jaye, baaki dono bache rahe)
+      if (!lineOnly) {
+        for (;;) {
+          if (done()) return;
+          let best = null;
+          A.forEach((s, li) => {
+            const ps = s.split(/\s*,\s*/);
+            if (ps.length < 2) return; // akela hissa = poori line, use (b) dekhega
+            ps.forEach((p, pi) => {
+              if (!drop(p)) return;
+              if (!best || p.trim().length < best.len) best = { li, pi, len: p.trim().length };
+            });
+          });
+          if (!best) break;
+          const next = tidy(A.map((s, li) =>
+            li !== best.li ? s : s.split(/\s*,\s*/).filter((_, pi) => pi !== best.pi).join(", ")
+          ));
+          if (!next.length) break;
+          A = next;
+        }
+      }
+      // (b) PHIR poori line — bhi ek-ek karke, chhoti line pehle
+      //     (line khud wahi cheez ho, ya uske SAARE hisse wahi cheez ho)
       const dropLine = (s) => {
         if (drop(s)) return true;
         const ps = s.split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean);
         return ps.length > 1 && ps.every(drop);
       };
-      const keep = A.filter((s) => !dropLine(s));
-      if (keep.length) A = keep;                  // poora address wahi ho to mat hatao
-    }
+      for (;;) {
+        if (done()) return;
+        if (A.length <= 1) return; // poora address kabhi khali mat karo
+        let bi = -1, bl = Infinity;
+        A.forEach((s, i) => { if (dropLine(s) && s.length < bl) { bl = s.length; bi = i; } });
+        if (bi === -1) return;
+        A = A.filter((_, i) => i !== bi);
+      }
+    };
+
+    // "India" aur State ka koi MOL nahi (PIN se pata chal jate hai) —
+    // isliye ye shabd chhote karne se bhi PEHLE jate hai.
+    applyDrop(isIndia);
+    applyDrop(isState);
+    fitState.applyDrop = applyDrop;
+    fitState.rest = [[wasDistLine, true], [wasTehLine, true], [isLM, false]];
+
+
+  // ---- ab shabd chhote karo (upar wale zero-cost kaam ke BAAD) ----
+  //      Jab tak 100 ke andar na aa jaye tabhi agla shabd chhota hota hai.
+  //      Isliye "Market" tabhi "Mkt" banega jab sach me jagah kam padegi.
+  //      Kram: sabse aam/pehchana-jaane wala pehle.
+  const WORD = [
+    [/\bnear\s*:?\s*/gi, "Nr "],       // "Near:" ka colon bhi jata hai
+    [/\bopposite\s*:?\s*/gi, "Opp "],
+    [/\bbehind\s*:?\s*/gi, "Beh "],
+    [/\broad\b/gi, "Rd"],
+    [/\bnagar\b/gi, "Ngr"],
+    [/\bnumber\b/gi, "No"],
+    [/\bcolony\b/gi, "Col"],
+    [/\bsociety\b/gi, "Soc"],
+    [/\bfloor\b/gi, "Flr"],
+    [/\bbuilding\b/gi, "Bldg"],
+    [/\bapartment\b/gi, "Apt"],
+    [/\bstation\b/gi, "Stn"],
+    [/\bhospital\b/gi, "Hosp"],
+    [/\bmarket\b/gi, "Mkt"],
+    [/\bcross(?:ing)?\b/gi, "Crsg"],
+  ];
+  for (const [re, to] of WORD) {
+    if (done()) break;
+    const next = tidy(A.map((s) => s.replace(re, to)));
+    if (next.length) A = next;
+  }
+  if (done()) return rebuild(head, A, tail);
+
+    // Ab baaki — District ka naam, Tehsil ka naam, phir LANDMARK sabse aakhir me.
+    // Jaise hi 100 ke andar aaya WAHI RUK JAO.
+    for (const [drop, lineOnly] of fitState.rest) fitState.applyDrop(drop, lineOnly);
   }
   return rebuild(head, A, tail);
 }
@@ -1721,7 +1797,7 @@ async function appendRowsToSheet(entries) {
 // ============================================================
 bot.start((ctx) =>
   ctx.reply(
-    "🙏 Serdiya Address Bot v9.6 (Auto-Save)\n\n" +
+    "🙏 Serdiya Address Bot v9.8 (Auto-Save)\n\n" +
       "Bas address bhej do (TEXT ya PHOTO 📷) — main khud clean karke SEEDHA Sheet me daal dunga.\n\n" +
       "Jawab sirf tab aayega jab:\n" +
       "🚫 PPD parcel ho (save nahi hoga)\n" +
@@ -1890,7 +1966,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
     if (la.applied.length) cleaned = la.text;
   }
 
-  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.6) ----------
+  // ---------- STEP 3b: Address ko 100 character me fit karo (v9.8) ----------
   // Booking ke time lamba address KAT jata hai. Naam / phone / pincode / COD / weight
   // ko haath nahi lagta — sirf beech ka ASLI address chhota hota hai, aur wo bhi
   // TABHI jab 100 se bada ho. (validate() upar hi ho chuka hai — poore address par.)
@@ -1938,7 +2014,7 @@ async function handleAddress(ctx, raw, photoFileId, isEdit) {
 }
 
 const app = express();
-app.get("/", (req, res) => res.send("Serdiya Address Bot v9.6 chal raha hai ✅"));
+app.get("/", (req, res) => res.send("Serdiya Address Bot v9.8 chal raha hai ✅"));
 app.listen(process.env.PORT || 3000, () => console.log("Health server up"));
 
 // Crash protection — koi bhi unhandled error process ko band NAHI karega
@@ -1947,7 +2023,7 @@ process.on("uncaughtException", (e) => console.error("Uncaught exception:", e?.m
 
 initLearning(); // Launch se PEHLE — 409 deploy-overlap aaye to bhi learning zaroor chale
 bot.launch()
-  .then(() => console.log("🤖 Serdiya Address Bot v9.6 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
+  .then(() => console.log("🤖 Serdiya Address Bot v9.8 MASTER LIVE — Auto-Save + Hinglish + anti-hallucination"))
   .catch((e) => console.log("⚠️ Launch me dikkat (deploy overlap — apne aap theek ho jata hai):", e.message));
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
